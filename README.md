@@ -173,9 +173,7 @@
 ISOs live in `/home/dietpi/iso` for convenient access during VM creation. Current images include:
 - `DietPi_NativePC-BIOS-x86_64-Trixie_Installer.iso`
 - `DietPi_NativePC-UEFI-x86_64-Trixie_Installer.iso`
-- `el-gr_windows_10_consumer_editions_version_22h2_updated_june_2025_x64_dvd_aace2d00.iso`
 - `proxmox-ve_9.1-1.iso`
-- `tiny11 b2(no sysreq).iso`
 - `virtio-win.iso`
 
 The helper script `/home/dietpi/spin-win11.sh` uses the Tiny11 image plus the virtio drivers to install a lightweight Windows 11 VM with 4 vCPUs, 4 GiB RAM, and a 100 GiB virtio disk, exposing VNC on `0.0.0.0` with password `123456aA`. **Performance optimizations:** `cache=writeback` for faster disk I/O and `--cpu host-passthrough` for native CPU performance.
