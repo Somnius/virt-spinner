@@ -28,8 +28,8 @@
   - Human-readable VM info display showing vCPUs, memory, disk size/allocation, state
   - Continuous loop—returns to VM list after each action
   - **Persistent Settings** saved to `~/.spinner_settings`
- 
-<img width="354" height="364" alt="image" src="https://github.com/user-attachments/assets/14a5c586-503c-4e65-b6d8-5efd2ecd1e02" />
+
+<img width="332" height="250" alt="image" src="https://github.com/user-attachments/assets/728033b3-c48a-4f9c-a5ab-01f7df02b4ab" />
 
   
   **Main Menu Options:**
