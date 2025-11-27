@@ -28,6 +28,9 @@
   - Human-readable VM info display showing vCPUs, memory, disk size/allocation, state
   - Continuous loop—returns to VM list after each action
   - **Persistent Settings** saved to `~/.spinner_settings`
+ 
+<img width="354" height="364" alt="image" src="https://github.com/user-attachments/assets/14a5c586-503c-4e65-b6d8-5efd2ecd1e02" />
+
   
   **Main Menu Options:**
   - **➕ Create New VM**: Full VM creation wizard
@@ -78,6 +81,9 @@
   - **Auto-Features**:
     - Automatic oldest snapshot deletion when limit reached
     - Name generation from configurable template
+
+<img width="354" height="364" alt="image" src="https://github.com/user-attachments/assets/ce4365b2-d399-4019-baf4-d09513c3849f" />
+
   
   **VM Operations:**
   - **Create New VM**: Interactive wizard for creating VMs with:
@@ -146,6 +152,9 @@
       - Shows file sizes for orphaned images
       - Two confirmation dialogs before deletion
       - Only deletes truly orphaned images
+
+<img width="395" height="541" alt="image" src="https://github.com/user-attachments/assets/a3e4a8b4-8d5c-4072-8839-a615950e6b9a" />
+
   
   **Configuration:**
   - Configurable paths at top of script: `ISO_DIR`, `DISK_DIR`, libvirt URIs
@@ -180,6 +189,9 @@ ISOs live in `/home/dietpi/iso` for convenient access during VM creation. Curren
 - `virtio-win.iso`
 
 The helper script `/home/dietpi/spin-win11.sh` uses the Tiny11 image plus the virtio drivers to install a lightweight Windows 11 VM with 4 vCPUs, 4 GiB RAM, and a 100 GiB virtio disk, exposing VNC on `0.0.0.0` with password `123456aA`. **Performance optimizations:** `cache=writeback` for faster disk I/O and `--cpu host-passthrough` for native CPU performance.
+
+<img width="626" height="437" alt="image" src="https://github.com/user-attachments/assets/ad37cc54-9fb7-4429-91e3-5f533c97e897" />
+
 
 ## Quick Start
 1. Ensure libvirtd is running: `sudo systemctl status libvirtd`.
