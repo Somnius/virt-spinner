@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Version and Author Info
-VERSION="1.3"
+VERSION="1.4"
 AUTHOR_NAME="Lefteris Iliadis"
 AUTHOR_EMAIL="me@lefteros.com"
 
@@ -36,6 +36,10 @@ SNAPSHOT_AUTO_ENABLED=false          # Auto-snapshot before risky operations
 SNAPSHOT_NAME_TEMPLATE="{vm}-{date}-{time}"  # Options: {vm}, {date}, {time}, {n}
 SNAPSHOT_LIMIT=5                     # Max snapshots per VM (0=unlimited)
 
+# VM Security Features (defaults - can be overridden per VM)
+SECURE_BOOT_ENABLED=false            # Secure Boot (disabled by default to avoid MOK prompts)
+TPM_ENABLED=false                    # TPM emulation (disabled by default)
+
 # Required packages for VIRT SPINNER
 REQUIRED_PACKAGES=("fzf" "dialog" "libvirt-clients" "qemu-utils" "virt-manager" "rsync" "net-tools" "pv")
 
@@ -49,9 +53,123 @@ SETTINGS_FILE="$HOME/.spinner_settings"
 # End Configuration
 #####################################################################
 
+# Settings migration and loading
+load_and_migrate_settings() {
+  local settings_version=""
+  local reset_count=0
+  local reset_vars=()
+  local needs_migration=false
+  
+  if [[ ! -f "$SETTINGS_FILE" ]]; then
+    return 0  # No settings file, nothing to migrate
+  fi
+  
+  # Try to read version from settings file
+  if grep -q "^SETTINGS_VERSION=" "$SETTINGS_FILE" 2>/dev/null; then
+    settings_version=$(grep "^SETTINGS_VERSION=" "$SETTINGS_FILE" | cut -d'=' -f2 | tr -d '"' | tr -d "'")
+  fi
+  
+  # If no version or version mismatch, we need to migrate
+  if [[ -z "$settings_version" || "$settings_version" != "$VERSION" ]]; then
+    needs_migration=true
+  fi
+  
+  # Load existing settings first (even if we'll migrate)
+  set +e
+  source "$SETTINGS_FILE" 2>/dev/null
+  set -e
+  
+  # If migration is needed, preserve old values and add new ones
+  if [[ "$needs_migration" == true ]]; then
+    # Backup current settings
+    local backup_file="${SETTINGS_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    cp "$SETTINGS_FILE" "$backup_file" 2>/dev/null || true
+    
+    # Save old values (they're already loaded from source above)
+    local old_monitor_refresh="${MONITOR_REFRESH:-}"
+    local old_disk_cache="${DISK_CACHE:-}"
+    local old_cpu_mode="${CPU_MODE:-}"
+    local old_snapshot_auto="${SNAPSHOT_AUTO_ENABLED:-}"
+    local old_snapshot_template="${SNAPSHOT_NAME_TEMPLATE:-}"
+    local old_snapshot_limit="${SNAPSHOT_LIMIT:-}"
+    local old_iso_dir="${ISO_DIR:-}"
+    local old_disk_dir="${DISK_DIR:-}"
+    local old_secure_boot="${SECURE_BOOT_ENABLED:-}"
+    local old_tpm="${TPM_ENABLED:-}"
+    
+    # Restore old values if they exist and are valid (preserve user settings)
+    [[ -n "$old_monitor_refresh" ]] && MONITOR_REFRESH="$old_monitor_refresh"
+    [[ -n "$old_disk_cache" ]] && DISK_CACHE="$old_disk_cache"
+    [[ -n "$old_cpu_mode" ]] && CPU_MODE="$old_cpu_mode"
+    [[ -n "$old_snapshot_auto" ]] && SNAPSHOT_AUTO_ENABLED="$old_snapshot_auto"
+    [[ -n "$old_snapshot_template" ]] && SNAPSHOT_NAME_TEMPLATE="$old_snapshot_template"
+    [[ -n "$old_snapshot_limit" ]] && SNAPSHOT_LIMIT="$old_snapshot_limit"
+    [[ -n "$old_iso_dir" ]] && ISO_DIR="$old_iso_dir"
+    [[ -n "$old_disk_dir" ]] && DISK_DIR="$old_disk_dir"
+    [[ -n "$old_secure_boot" ]] && SECURE_BOOT_ENABLED="$old_secure_boot"
+    [[ -n "$old_tpm" ]] && TPM_ENABLED="$old_tpm"
+    
+    # Add new settings if they don't exist (for new features added in this version)
+    # SECURE_BOOT_ENABLED and TPM_ENABLED were added in v1.4
+    if [[ -z "$old_secure_boot" ]]; then
+      SECURE_BOOT_ENABLED=false  # Use default
+    fi
+    if [[ -z "$old_tpm" ]]; then
+      TPM_ENABLED=false  # Use default
+    fi
+    
+    # Save migrated settings with new version
+    save_settings
+    
+    # Inform user about migration
+    if [[ $reset_count -gt 0 ]]; then
+      clear
+      gum style --bold --foreground 212 "═══ Settings Migration ═══"
+      echo
+      gum style --foreground 3 "⚠️  Settings file updated for VIRT SPINNER v$VERSION"
+      echo
+      gum style --foreground 8 "The following $reset_count setting(s) were reset to defaults:"
+      for var in "${reset_vars[@]}"; do
+        echo "  • $var"
+      done
+      echo
+      gum style --foreground 8 "Please review and update these settings in the Settings menu."
+      gum style --foreground 8 "Your previous settings were backed up to:"
+      gum style --foreground 8 "  $backup_file"
+      echo
+      read -p "Press Enter to continue..."
+    elif [[ -n "$settings_version" && "$settings_version" != "$VERSION" ]]; then
+      # Settings were migrated but nothing was reset
+      clear
+      gum style --bold --foreground 212 "═══ Settings Migration ═══"
+      echo
+      gum style --foreground 2 "✓ Settings file updated for VIRT SPINNER v$VERSION"
+      echo
+      gum style --foreground 8 "Your existing settings have been preserved."
+      gum style --foreground 8 "New features have been added with default values."
+      echo
+      read -p "Press Enter to continue..."
+    else
+      # First time adding version tracking
+      clear
+      gum style --bold --foreground 212 "═══ Settings Migration ═══"
+      echo
+      gum style --foreground 2 "✓ Settings file updated for VIRT SPINNER v$VERSION"
+      echo
+      gum style --foreground 8 "Your existing settings have been preserved."
+      gum style --foreground 8 "Version tracking has been added to your settings file."
+      echo
+      read -p "Press Enter to continue..."
+    fi
+  fi
+}
+
 # Load saved settings if exists
 if [[ -f "$SETTINGS_FILE" ]]; then
-  source "$SETTINGS_FILE"
+  load_and_migrate_settings
+else
+  # No settings file yet, will be created on first save
+  :
 fi
 
 # Ensure gum is in PATH
@@ -975,12 +1093,22 @@ live_system_monitor() {
 # Save all settings to file
 save_settings() {
   cat > "$SETTINGS_FILE" << EOF
+# VIRT SPINNER Settings - Auto-generated
+# This file is sourced by spinner.sh to persist configuration
+# Settings Version: $VERSION
+# Last Updated: $(date)
+
+SETTINGS_VERSION="$VERSION"
 MONITOR_REFRESH=$MONITOR_REFRESH
 DISK_CACHE="$DISK_CACHE"
 CPU_MODE="$CPU_MODE"
 SNAPSHOT_AUTO_ENABLED=$SNAPSHOT_AUTO_ENABLED
 SNAPSHOT_NAME_TEMPLATE="$SNAPSHOT_NAME_TEMPLATE"
 SNAPSHOT_LIMIT=$SNAPSHOT_LIMIT
+ISO_DIR="$ISO_DIR"
+DISK_DIR="$DISK_DIR"
+SECURE_BOOT_ENABLED=$SECURE_BOOT_ENABLED
+TPM_ENABLED=$TPM_ENABLED
 EOF
 }
 
@@ -1010,6 +1138,14 @@ settings_menu() {
     echo "  ISO directory: $ISO_DIR"
     echo "  Disk directory: $DISK_DIR"
     echo
+    gum style --bold --foreground 51 "VM Security (defaults for new VMs):"
+    local secure_boot_status="disabled"
+    [[ "$SECURE_BOOT_ENABLED" == "true" ]] && secure_boot_status="enabled"
+    local tpm_status="disabled"
+    [[ "$TPM_ENABLED" == "true" ]] && tpm_status="enabled"
+    echo "  Secure Boot: $secure_boot_status"
+    echo "  TPM emulation: $tpm_status"
+    echo
     
     local choice
     choice=$(gum choose --header="Select setting to change:" \
@@ -1020,6 +1156,12 @@ settings_menu() {
       "Auto-Snapshot ($auto_status)" \
       "Snapshot Name Template" \
       "Snapshot Limit ($SNAPSHOT_LIMIT)" \
+      "───────── Paths ─────────" \
+      "ISO Directory" \
+      "Disk Directory" \
+      "───────── VM Security ─────────" \
+      "Secure Boot ($secure_boot_status)" \
+      "TPM Emulation ($tpm_status)" \
       "← Back to Main Menu" \
       || echo "← Back to Main Menu")
     
@@ -1124,6 +1266,134 @@ settings_menu() {
           sleep 1
         fi
         ;;
+      "───────── Paths ─────────")
+        # Separator, do nothing
+        continue
+        ;;
+      "ISO Directory"*)
+        echo
+        gum style --foreground 8 "Current ISO directory: $ISO_DIR"
+        echo
+        gum style --foreground 8 "Enter the full path to your ISO directory"
+        gum style --foreground 8 "The directory will be created if it doesn't exist"
+        echo
+        local new_iso_dir
+        new_iso_dir=$(gum input --placeholder "Enter ISO directory path" --value "$ISO_DIR")
+        if [[ -n "$new_iso_dir" ]]; then
+          # Expand ~ and variables
+          new_iso_dir=$(eval echo "$new_iso_dir")
+          
+          # Validate path
+          if [[ "$new_iso_dir" =~ ^/ ]]; then
+            # Absolute path - try to create if doesn't exist
+            if [[ ! -d "$new_iso_dir" ]]; then
+              if mkdir -p "$new_iso_dir" 2>/dev/null; then
+                gum style --foreground 2 "✓ Created directory: $new_iso_dir"
+              else
+                gum style --foreground 1 "✗ Failed to create directory: $new_iso_dir"
+                gum style --foreground 8 "  Check permissions or use a different path"
+                sleep 2
+                continue
+              fi
+            fi
+            
+            # Check if readable
+            if [[ -r "$new_iso_dir" ]]; then
+              ISO_DIR="$new_iso_dir"
+              save_settings
+              gum style --foreground 2 "✓ ISO directory set to: $ISO_DIR"
+              sleep 1
+            else
+              gum style --foreground 1 "✗ Directory is not readable: $new_iso_dir"
+              sleep 2
+            fi
+          else
+            gum style --foreground 1 "✗ Invalid path. Must be an absolute path (starting with /)"
+            sleep 2
+          fi
+        fi
+        ;;
+      "Disk Directory"*)
+        echo
+        gum style --foreground 8 "Current disk directory: $DISK_DIR"
+        echo
+        gum style --foreground 8 "Enter the full path to your libvirt disk images directory"
+        gum style --foreground 8 "⚠️  Changing this may affect existing VMs"
+        echo
+        local new_disk_dir
+        new_disk_dir=$(gum input --placeholder "Enter disk directory path" --value "$DISK_DIR")
+        if [[ -n "$new_disk_dir" ]]; then
+          # Expand ~ and variables
+          new_disk_dir=$(eval echo "$new_disk_dir")
+          
+          # Validate path
+          if [[ "$new_disk_dir" =~ ^/ ]]; then
+            # Absolute path - check if exists
+            if [[ ! -d "$new_disk_dir" ]]; then
+              gum style --foreground 3 "⚠️  Directory does not exist: $new_disk_dir"
+              local create_choice
+              create_choice=$(gum choose --header="Create directory?" "Yes" "No" || echo "No")
+              if [[ "$create_choice" == "Yes" ]]; then
+                if sudo mkdir -p "$new_disk_dir" 2>/dev/null && sudo chown root:libvirt "$new_disk_dir" 2>/dev/null && sudo chmod 755 "$new_disk_dir" 2>/dev/null; then
+                  gum style --foreground 2 "✓ Created directory: $new_disk_dir"
+                else
+                  gum style --foreground 1 "✗ Failed to create directory: $new_disk_dir"
+                  gum style --foreground 8 "  Check permissions or use a different path"
+                  sleep 2
+                  continue
+                fi
+              else
+                continue
+              fi
+            fi
+            
+            # Check if readable
+            if [[ -r "$new_disk_dir" ]] || sudo test -r "$new_disk_dir" 2>/dev/null; then
+              DISK_DIR="$new_disk_dir"
+              save_settings
+              gum style --foreground 2 "✓ Disk directory set to: $DISK_DIR"
+              sleep 1
+            else
+              gum style --foreground 1 "✗ Directory is not readable: $new_disk_dir"
+              sleep 2
+            fi
+          else
+            gum style --foreground 1 "✗ Invalid path. Must be an absolute path (starting with /)"
+            sleep 2
+          fi
+        fi
+        ;;
+      "───────── VM Security ─────────")
+        # Separator, do nothing
+        continue
+        ;;
+      "Secure Boot"*)
+        if [[ "$SECURE_BOOT_ENABLED" == "true" ]]; then
+          SECURE_BOOT_ENABLED=false
+          gum style --foreground 3 "✓ Secure Boot disabled (default for new VMs)"
+          gum style --foreground 8 "  VMs will not require MOK enrollment"
+        else
+          SECURE_BOOT_ENABLED=true
+          gum style --foreground 2 "✓ Secure Boot enabled (default for new VMs)"
+          gum style --foreground 8 "  ⚠️  Note: Some OSes (like Nobara) may require MOK enrollment"
+          gum style --foreground 8 "  You can still override this per-VM during creation"
+        fi
+        save_settings
+        sleep 1
+        ;;
+      "TPM Emulation"*)
+        if [[ "$TPM_ENABLED" == "true" ]]; then
+          TPM_ENABLED=false
+          gum style --foreground 3 "✓ TPM emulation disabled (default for new VMs)"
+        else
+          TPM_ENABLED=true
+          gum style --foreground 2 "✓ TPM emulation enabled (default for new VMs)"
+          gum style --foreground 8 "  Required for Windows 11 and some security features"
+          gum style --foreground 8 "  You can still override this per-VM during creation"
+        fi
+        save_settings
+        sleep 1
+        ;;
       "← Back to Main Menu")
         return
         ;;
@@ -1145,17 +1415,51 @@ prompt_orphan_cleanup() {
   fi
 
   # Get all disk images in the directory (all common formats)
+  # Use find to get all files, then check if they're valid disk images
   gum style --foreground 8 "Scanning $images_dir for disk images..."
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    # Check for common disk image formats
-    if [[ "$line" == *.qcow2 ]] || [[ "$line" == *.qcow ]] || [[ "$line" == *.img ]] || [[ "$line" == *.raw ]]; then
-      all_images+=("$line")
+  
+  # Find all files in the directory (non-recursive, maxdepth 1)
+  while IFS= read -r full_path; do
+    [[ -z "$full_path" ]] && continue
+    local filename
+    filename=$(basename "$full_path" 2>/dev/null)
+    [[ -z "$filename" ]] && continue
+    
+    # Skip if already in list
+    local already_found=false
+    for existing in "${all_images[@]}"; do
+      if [[ "$filename" == "$existing" ]]; then
+        already_found=true
+        break
+      fi
+    done
+    [[ "$already_found" == true ]] && continue
+    
+    # Check if it's a disk image by extension first (fast check)
+    if [[ "$filename" == *.qcow2 ]] || [[ "$filename" == *.qcow ]] || [[ "$filename" == *.img ]] || [[ "$filename" == *.raw ]] || [[ "$filename" == *.vmdk ]] || [[ "$filename" == *.vdi ]]; then
+      all_images+=("$filename")
+      continue
     fi
-  done < <(sudo ls -1 "$images_dir" 2>/dev/null || true)
+    
+    # If no extension match, try to verify with qemu-img (slower but catches all formats)
+    if sudo qemu-img info "$full_path" &>/dev/null; then
+      all_images+=("$filename")
+    fi
+  done < <(sudo find "$images_dir" -maxdepth 1 -type f 2>/dev/null || true)
 
   if [ ${#all_images[@]} -eq 0 ]; then
-    gum style --foreground 2 "✓ No disk images found in $images_dir."
+    # Check if directory has any files at all
+    local file_count
+    file_count=$(sudo find "$images_dir" -maxdepth 1 -type f 2>/dev/null | wc -l || echo "0")
+    if [[ "$file_count" -gt 0 ]]; then
+      gum style --foreground 3 "⚠️  Found $file_count file(s) but none appear to be valid disk images."
+      gum style --foreground 8 "   Listing files in directory:"
+      sudo ls -lh "$images_dir" 2>/dev/null | tail -n +2 | head -10 | while read -r line; do
+        gum style --foreground 8 "     $line"
+      done
+    else
+      gum style --foreground 2 "✓ No disk images found in $images_dir."
+    fi
     return
   fi
 
@@ -3057,6 +3361,10 @@ create_new_vm() {
   gum style --foreground 8 "Press ESC anytime to cancel and return to main menu"
   echo
   
+  # Initialize security feature variables (defaults from settings)
+  local vm_secure_boot="$SECURE_BOOT_ENABLED"
+  local vm_tpm="$TPM_ENABLED"
+  
   # VM Name (with cancellation handling)
   set +e
   vm_name=$(gum input --placeholder "Enter VM name" --prompt "VM Name: ")
@@ -3226,8 +3534,67 @@ create_new_vm() {
         return
       fi
     fi
+    
+    # Secure Boot option (only for UEFI)
+    echo ""
+    gum style --foreground 6 --bold "🔒 Secure Boot"
+    gum style --foreground 8 "💡 Secure Boot validates bootloader signatures"
+    gum style --foreground 8 "   Disabled by default to avoid MOK enrollment prompts"
+    gum style --foreground 8 "   Current default: $([[ "$SECURE_BOOT_ENABLED" == "true" ]] && echo "enabled" || echo "disabled")"
+    
+    local secure_boot_choice
+    secure_boot_choice=$(gum choose --header="Enable Secure Boot for this VM?" \
+      "Use default ($([[ "$SECURE_BOOT_ENABLED" == "true" ]] && echo "enabled" || echo "disabled"))" \
+      "Enable Secure Boot" \
+      "Disable Secure Boot")
+    
+    case "$secure_boot_choice" in
+      "Use default"*)
+        vm_secure_boot="$SECURE_BOOT_ENABLED"
+        ;;
+      "Enable Secure Boot"*)
+        vm_secure_boot="true"
+        ;;
+      "Disable Secure Boot"*)
+        vm_secure_boot="false"
+        ;;
+      *)
+        vm_secure_boot="$SECURE_BOOT_ENABLED"
+        ;;
+    esac
+    
+    # TPM option
+    echo ""
+    gum style --foreground 6 --bold "🔐 TPM Emulation"
+    gum style --foreground 8 "💡 TPM (Trusted Platform Module) required for Windows 11"
+    gum style --foreground 8 "   Also used for BitLocker, secure boot measurements, etc."
+    gum style --foreground 8 "   Current default: $([[ "$TPM_ENABLED" == "true" ]] && echo "enabled" || echo "disabled")"
+    
+    local tpm_choice
+    tpm_choice=$(gum choose --header="Enable TPM emulation for this VM?" \
+      "Use default ($([[ "$TPM_ENABLED" == "true" ]] && echo "enabled" || echo "disabled"))" \
+      "Enable TPM" \
+      "Disable TPM")
+    
+    case "$tpm_choice" in
+      "Use default"*)
+        vm_tpm="$TPM_ENABLED"
+        ;;
+      "Enable TPM"*)
+        vm_tpm="true"
+        ;;
+      "Disable TPM"*)
+        vm_tpm="false"
+        ;;
+      *)
+        vm_tpm="$TPM_ENABLED"
+        ;;
+    esac
   else
     firmware="bios"
+    # BIOS doesn't support secure boot or TPM in the same way
+    vm_secure_boot="false"
+    vm_tpm="false"
   fi
   
   # Primary Disk
@@ -3823,6 +4190,20 @@ create_new_vm() {
   # CPU mode
   if [[ "$cpu_mode" != "default" ]]; then
     virt_cmd="$virt_cmd --cpu $cpu_mode"
+  fi
+  
+  # Secure Boot (only for UEFI)
+  if [[ "$firmware" == "uefi" ]]; then
+    if [[ "$vm_secure_boot" == "true" ]]; then
+      virt_cmd="$virt_cmd --features secureboot=on"
+    else
+      virt_cmd="$virt_cmd --features secureboot=off"
+    fi
+  fi
+  
+  # TPM emulation
+  if [[ "$vm_tpm" == "true" ]]; then
+    virt_cmd="$virt_cmd --tpm type=emulator,model=tpm-tis"
   fi
   
   # Primary disk
