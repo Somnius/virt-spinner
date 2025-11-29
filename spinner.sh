@@ -2931,9 +2931,12 @@ create_new_vm() {
   fi
   
   # OS Variant
-  gum style --foreground 8 "OS variants: win11, win10, win8, win7, win2k22, win2k19, debian12, debian11, ubuntu24.04,"
+  echo ""
+  gum style --foreground 6 --bold "📋 OS Variant Selection"
+  gum style --foreground 8 "Available: win11, win10, win8, win7, win2k22, win2k19, debian12, debian11, ubuntu24.04,"
   gum style --foreground 8 "ubuntu22.04, ubuntu20.04, fedora39, fedora38, rhel9, rhel8, centos9, centos8, arch, manjaro,"
-  gum style --foreground 8 "opensuse-tumbleweed, opensuse-leap15.5, freebsd14.0, openbsd7.4, generic (or use: osinfo-query os)"
+  gum style --foreground 8 "opensuse-tumbleweed, opensuse-leap15.5, freebsd14.0, openbsd7.4, generic"
+  gum style --foreground 8 "💡 Tip: Use 'osinfo-query os' to see the complete list"
   set +e
   os_variant=$(gum input --placeholder "e.g., win11, debian12, ubuntu24.04, generic" --prompt "OS Variant: " --value "generic")
   input_result=$?
@@ -2945,8 +2948,21 @@ create_new_vm() {
   fi
   
   # Memory (MB)
+  echo ""
+  gum style --foreground 6 --bold "💾 Memory Allocation"
+  local total_ram_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+  local total_ram_mb=$((total_ram_kb / 1024))
+  local total_ram_gb=$((total_ram_mb / 1024))
+  local suggested_ram=$((total_ram_mb / 4))  # Suggest 25% of total RAM
+  [[ $suggested_ram -lt 2048 ]] && suggested_ram=2048  # Minimum 2GB
+  [[ $suggested_ram -gt 8192 ]] && suggested_ram=8192  # Max suggestion 8GB
+  
+  local safe_max=$((total_ram_mb * 3 / 4))  # 75% of total RAM
+  gum style --foreground 8 "System RAM: ${total_ram_gb}GB (${total_ram_mb}MB total)"
+  gum style --foreground 8 "💡 Recommended: Leave at least 25% RAM for host (max ~${safe_max}MB for VM)"
+  gum style --foreground 8 "   Suggested: ${suggested_ram}MB for this VM"
   set +e
-  memory=$(gum input --placeholder "Memory in MB (e.g., 4096)" --prompt "Memory (MB): " --value "4096")
+  memory=$(gum input --placeholder "Memory in MB" --prompt "Memory (MB): " --value "$suggested_ram")
   input_result=$?
   set -e
   if [[ $input_result -ne 0 ]]; then
@@ -2961,9 +2977,30 @@ create_new_vm() {
     return
   fi
   
+  # Warn if over-allocating
+  if [[ $memory -gt $safe_max ]]; then
+    gum style --foreground 3 "⚠️  Warning: Allocating ${memory}MB may leave insufficient RAM for the host!"
+    gum style --foreground 8 "   This could cause system instability or swapping."
+    if ! gum confirm "Continue with ${memory}MB anyway?"; then
+      gum style --foreground 3 "✗ VM creation cancelled."
+      read -p "Press Enter to continue..."
+      return
+    fi
+  fi
+  
   # vCPUs
+  echo ""
+  gum style --foreground 6 --bold "🔢 CPU Allocation"
+  local total_cpus=$(nproc)
+  local suggested_cpus=$((total_cpus / 2))  # Suggest half of available CPUs
+  [[ $suggested_cpus -lt 2 ]] && suggested_cpus=2  # Minimum 2 CPUs
+  [[ $suggested_cpus -gt 8 ]] && suggested_cpus=8  # Max suggestion 8 CPUs
+  
+  gum style --foreground 8 "System CPUs: $total_cpus cores available"
+  gum style --foreground 8 "💡 Recommended: Assign 25-50% of host CPUs (suggested: ${suggested_cpus} vCPUs)"
+  gum style --foreground 8 "   Assigning too many can hurt performance on both host and guest"
   set +e
-  vcpus=$(gum input --placeholder "Number of vCPUs (e.g., 4)" --prompt "vCPUs: " --value "4")
+  vcpus=$(gum input --placeholder "Number of vCPUs" --prompt "vCPUs: " --value "$suggested_cpus")
   input_result=$?
   set -e
   if [[ $input_result -ne 0 ]]; then
@@ -2978,6 +3015,17 @@ create_new_vm() {
     return
   fi
   
+  # Warn if over-allocating CPUs
+  if [[ $vcpus -gt $total_cpus ]]; then
+    gum style --foreground 3 "⚠️  Warning: Assigning more vCPUs ($vcpus) than physical CPUs ($total_cpus)!"
+    gum style --foreground 8 "   This will cause CPU overcommitment and poor performance."
+    if ! gum confirm "Continue with ${vcpus} vCPUs anyway?"; then
+      gum style --foreground 3 "✗ VM creation cancelled."
+      read -p "Press Enter to continue..."
+      return
+    fi
+  fi
+  
   # CPU Mode
   cpu_mode=$(gum choose --header="CPU Mode:" \
     "host-passthrough (best performance)" \
@@ -2986,8 +3034,23 @@ create_new_vm() {
   cpu_mode=${cpu_mode%% *}
   
   # Primary Disk
+  echo ""
+  gum style --foreground 6 --bold "💿 Primary Disk Size"
+  
+  # Get available space on DISK_DIR
+  local available_space_kb=$(df "$DISK_DIR" 2>/dev/null | awk 'NR==2 {print $4}')
+  if [[ -n "$available_space_kb" ]]; then
+    local available_gb=$((available_space_kb / 1024 / 1024))
+    gum style --foreground 8 "Available space in $DISK_DIR: ${available_gb}GB"
+  else
+    gum style --foreground 8 "Disk location: $DISK_DIR"
+  fi
+  
+  gum style --foreground 8 "💡 Tip: Virtual disks are thin-provisioned (only use space as needed)"
+  gum style --foreground 8 "   Common sizes: 20GB (minimal), 50GB (standard), 100GB (comfortable), 500GB+ (workstation)"
+  
   set +e
-  disk_size=$(gum input --placeholder "Disk size in GB (e.g., 100)" --prompt "Primary Disk Size (GB): " --value "100")
+  disk_size=$(gum input --placeholder "Disk size in GB" --prompt "Primary Disk Size (GB): " --value "100")
   input_result=$?
   set -e
   if [[ $input_result -ne 0 ]]; then
@@ -3002,8 +3065,26 @@ create_new_vm() {
     return
   fi
   
+  # Warn if disk size exceeds available space
+  if [[ -n "$available_space_kb" ]]; then
+    local disk_size_kb=$((disk_size * 1024 * 1024))
+    if [[ $disk_size_kb -gt $available_space_kb ]]; then
+      gum style --foreground 3 "⚠️  Warning: ${disk_size}GB exceeds available space (${available_gb}GB)!"
+      if ! gum confirm "Continue anyway? (may cause errors during installation)"; then
+        gum style --foreground 3 "✗ VM creation cancelled."
+        read -p "Press Enter to continue..."
+        return
+      fi
+    fi
+  fi
+  
   # Disk Cache
-  disk_cache=$(gum choose --header="Disk Cache Mode:" \
+  echo ""
+  gum style --foreground 6 --bold "⚙️  Disk Cache Mode"
+  gum style --foreground 8 "💡 writeback: Fastest (data cached in host RAM, risk of data loss on host crash)"
+  gum style --foreground 8 "   writethrough: Balanced (cached reads, direct writes, good compromise)"
+  gum style --foreground 8 "   none: Safest (no caching, slowest but most secure)"
+  disk_cache=$(gum choose --header="Select cache mode:" \
     "writeback (fastest)" \
     "writethrough (balanced)" \
     "none (safest)")
@@ -3106,10 +3187,14 @@ create_new_vm() {
   }
   
   # First ISO (Boot)
+  echo ""
+  gum style --foreground 6 --bold "💿 Boot ISO Selection (Optional)"
+  gum style --foreground 8 "💡 Select installation media (OS installer ISO) or skip for PXE/network boot"
   first_iso=""
   
   # Check if ISO directory exists
   if [[ ! -d "$ISO_DIR" ]]; then
+    echo ""
     gum style --foreground 3 "⚠️  ISO directory not found: $ISO_DIR"
     echo ""
     
@@ -3382,7 +3467,13 @@ create_new_vm() {
   fi
   
   # Graphics
-  graphics_type=$(gum choose --header="Graphics Type:" \
+  echo ""
+  gum style --foreground 6 --bold "🖥️  Graphics Configuration"
+  gum style --foreground 8 "💡 VNC: Universal, works everywhere, good for remote access"
+  gum style --foreground 8 "   SPICE: Better performance, supports 3D acceleration, clipboard sharing"
+  gum style --foreground 8 "   none: Headless (SSH/serial console only)"
+  
+  graphics_type=$(gum choose --header="Select graphics type:" \
     "vnc (VNC server)" \
     "spice (SPICE)" \
     "none (headless)")
@@ -3391,6 +3482,7 @@ create_new_vm() {
   # 3D Acceleration
   enable_3d=false
   if [[ "$graphics_type" == "spice" ]]; then
+    echo ""
     if gum confirm "Enable 3D acceleration (virtio-gl)?"; then
       enable_3d=true
       gum style --foreground 6 "ℹ️  3D acceleration enabled. Guest needs virtio GPU drivers."
@@ -3458,7 +3550,13 @@ create_new_vm() {
   fi
   
   # Network
-  network=$(gum choose --header="Network:" \
+  echo ""
+  gum style --foreground 6 --bold "🌐 Network Configuration"
+  gum style --foreground 8 "💡 NAT: VM gets internet via host (easiest, works out of box)"
+  gum style --foreground 8 "   Bridge: VM appears on LAN (gets own IP, requires bridge setup)"
+  gum style --foreground 8 "   none: No network (completely isolated)"
+  
+  network=$(gum choose --header="Select network mode:" \
     "default (NAT)" \
     "bridge (Bridged)" \
     "none")
