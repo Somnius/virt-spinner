@@ -3442,8 +3442,10 @@ create_new_vm() {
   
   # Check and fix ISO access for first ISO
   if [[ -n "$first_iso" ]]; then
+    set +e
     first_iso=$(check_and_fix_iso_access "$first_iso")
     local iso_check_result=$?
+    set -e
     if [[ $iso_check_result -eq 2 ]]; then
       read -p "Press Enter to continue..."
       return
@@ -3455,8 +3457,10 @@ create_new_vm() {
   
   # Check and fix ISO access for second ISO
   if [[ -n "$second_iso" ]]; then
+    set +e
     second_iso=$(check_and_fix_iso_access "$second_iso")
     local iso_check_result=$?
+    set -e
     if [[ $iso_check_result -eq 2 ]]; then
       read -p "Press Enter to continue..."
       return
@@ -3596,22 +3600,17 @@ create_new_vm() {
   echo
   gum style --bold --foreground 212 "Building VM..."
   
-  virt_cmd="virt-install --connect $SYSTEM_URI --name $vm_name --memory $memory --vcpu $vcpus"
+  # Build virt-install command
+  virt_cmd="virt-install --connect $SYSTEM_URI"
+  virt_cmd="$virt_cmd --name $vm_name"
+  virt_cmd="$virt_cmd --memory $memory"
+  virt_cmd="$virt_cmd --vcpu $vcpus"
+  virt_cmd="$virt_cmd --os-variant $os_variant"
   
   # CPU mode
   if [[ "$cpu_mode" != "default" ]]; then
     virt_cmd="$virt_cmd --cpu $cpu_mode"
   fi
-  
-  # Boot ISO
-  if [[ -n "$first_iso" ]]; then
-    virt_cmd="$virt_cmd --cdrom \"$first_iso\""
-  else
-    virt_cmd="$virt_cmd --pxe"
-  fi
-  
-  # OS variant
-  virt_cmd="$virt_cmd --os-variant $os_variant"
   
   # Primary disk
   virt_cmd="$virt_cmd --disk size=$disk_size,cache=$disk_cache,bus=virtio"
@@ -3622,9 +3621,21 @@ create_new_vm() {
     virt_cmd="$virt_cmd --disk path=$second_disk_path,size=$second_disk_size,cache=$second_disk_cache,bus=virtio"
   fi
   
+  # Boot ISO and boot order
+  if [[ -n "$first_iso" ]]; then
+    # Escape the ISO path properly for eval
+    local escaped_iso="${first_iso//\"/\\\"}"
+    virt_cmd="$virt_cmd --cdrom \"$escaped_iso\""
+    virt_cmd="$virt_cmd --boot cdrom,hd,menu=on"
+  else
+    virt_cmd="$virt_cmd --pxe"
+    virt_cmd="$virt_cmd --boot network,hd,menu=on"
+  fi
+  
   # Second ISO
   if [[ -n "$second_iso" ]]; then
-    virt_cmd="$virt_cmd --disk path=\"$second_iso\",device=cdrom"
+    local escaped_iso2="${second_iso//\"/\\\"}"
+    virt_cmd="$virt_cmd --disk path=\"$escaped_iso2\",device=cdrom,readonly=on"
   fi
   
   # Graphics
@@ -3701,10 +3712,37 @@ create_new_vm() {
     return
   fi
   
+  # Verify ISO paths before creating VM
+  if [[ -n "$first_iso" ]]; then
+    if [[ ! -f "$first_iso" ]]; then
+      gum style --foreground 1 "✗ Error: Boot ISO file not found: $first_iso"
+      read -p "Press Enter to continue..."
+      return
+    fi
+    gum style --foreground 2 "✓ Boot ISO verified: $first_iso"
+  fi
+  
+  if [[ -n "$second_iso" ]]; then
+    if [[ ! -f "$second_iso" ]]; then
+      gum style --foreground 1 "✗ Error: Second ISO file not found: $second_iso"
+      read -p "Press Enter to continue..."
+      return
+    fi
+    gum style --foreground 2 "✓ Second ISO verified: $second_iso"
+  fi
+  
   # Execute virt-install
   echo
   gum style --bold --foreground 212 "Creating VM..."
   echo
+  
+  # Show command for debugging (optional)
+  if gum confirm "Show virt-install command? (for debugging)"; then
+    echo ""
+    gum style --foreground 8 --border rounded --padding "0 1" "$virt_cmd"
+    echo ""
+    read -p "Press Enter to continue with VM creation..."
+  fi
   
   if eval "$virt_cmd"; then
     gum style --foreground 2 "✓ VM '$vm_name' created successfully!"
