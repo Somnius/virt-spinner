@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Version and Author Info
-VERSION="0.9"
+VERSION="1.0"
 AUTHOR_NAME="Lefteris Iliadis"
 AUTHOR_EMAIL="me@lefteros.com"
 
