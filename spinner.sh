@@ -584,7 +584,13 @@ check_dependencies() {
     local mapped_pkg
     mapped_pkg=$(map_package_name "$pkg" "$pkg_manager")
     
-    if is_package_installed "$mapped_pkg" "$pkg_manager"; then
+    # Check if package is installed (disable errexit temporarily for this check)
+    set +e
+    is_package_installed "$mapped_pkg" "$pkg_manager" 2>/dev/null
+    local pkg_installed=$?
+    set -e
+    
+    if [ $pkg_installed -eq 0 ]; then
       ((installed_count++))
     else
       missing+=("$mapped_pkg")
