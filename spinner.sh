@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Version and Author Info
-VERSION="0.8"
+VERSION="0.9"
 AUTHOR_NAME="Lefteris Iliadis"
 AUTHOR_EMAIL="me@lefteros.com"
 
@@ -3083,6 +3083,151 @@ create_new_vm() {
           second_iso=""
         fi
       fi
+    fi
+  fi
+  
+  # Check ISO accessibility and offer to fix if needed
+  check_and_fix_iso_access() {
+    local iso_path="$1"
+    local iso_name=$(basename "$iso_path")
+    local iso_dir=$(dirname "$iso_path")
+    
+    # Check if ISO is in user's home directory (common permission issue)
+    if [[ "$iso_path" == "$HOME"* ]]; then
+      gum style --foreground 3 "⚠️  ISO is in your home directory: $iso_path"
+      gum style --foreground 3 "   QEMU/libvirt may not have permission to access it."
+      echo ""
+      
+      local fix_choice
+      fix_choice=$(gum choose --header="How would you like to proceed?" \
+        "Fix permissions (add qemu user access)" \
+        "Create symlink in $DISK_DIR" \
+        "Copy ISO to $DISK_DIR (slow, uses space)" \
+        "Use original path anyway (may fail)" \
+        "Cancel VM creation")
+      
+      case "$fix_choice" in
+        "Fix permissions (add qemu user access)")
+          gum style --foreground 6 "Adding qemu user permissions with ACL..."
+          
+          # Add execute permission on parent directories so qemu can traverse
+          local current_dir="$iso_dir"
+          while [[ "$current_dir" != "/" && "$current_dir" == "$HOME"* ]]; do
+            sudo setfacl -m u:qemu:x "$current_dir" 2>/dev/null || {
+              gum style --foreground 1 "✗ Failed to set ACL (is acl package installed?)"
+              gum style --foreground 8 "Try: sudo dnf install acl"
+              return 1
+            }
+            current_dir=$(dirname "$current_dir")
+          done
+          
+          # Add read permission on the ISO file
+          sudo setfacl -m u:qemu:r "$iso_path"
+          
+          gum style --foreground 2 "✓ Permissions fixed (qemu user can now access the file)"
+          echo "$iso_path"
+          return 0
+          ;;
+          
+        "Create symlink in $DISK_DIR")
+          gum style --foreground 6 "Creating symlink..."
+          
+          if [[ ! -d "$DISK_DIR" ]]; then
+            sudo mkdir -p "$DISK_DIR"
+          fi
+          
+          local link_path="$DISK_DIR/$iso_name"
+          if sudo ln -sf "$iso_path" "$link_path" 2>/dev/null; then
+            # Still need to fix permissions on the original file
+            sudo setfacl -m u:qemu:r "$iso_path" 2>/dev/null || true
+            
+            local current_dir="$iso_dir"
+            while [[ "$current_dir" != "/" && "$current_dir" == "$HOME"* ]]; do
+              sudo setfacl -m u:qemu:x "$current_dir" 2>/dev/null || true
+              current_dir=$(dirname "$current_dir")
+            done
+            
+            gum style --foreground 2 "✓ Symlink created: $link_path → $iso_path"
+            echo "$link_path"
+            return 0
+          else
+            gum style --foreground 1 "✗ Failed to create symlink"
+            return 1
+          fi
+          ;;
+          
+        "Copy ISO to $DISK_DIR (slow, uses space)")
+          gum style --foreground 6 "Copying $iso_name to $DISK_DIR..."
+          gum style --foreground 8 "(This may take a while for large ISOs)"
+          
+          if [[ ! -d "$DISK_DIR" ]]; then
+            sudo mkdir -p "$DISK_DIR"
+          fi
+          
+          # Copy with progress using pv if available
+          local new_path="$DISK_DIR/$iso_name"
+          if command -v pv &>/dev/null; then
+            sudo pv "$iso_path" | sudo tee "$new_path" > /dev/null
+          else
+            sudo cp -v "$iso_path" "$new_path"
+          fi
+          
+          if [[ $? -eq 0 ]]; then
+            sudo chmod 644 "$new_path"
+            sudo chown qemu:qemu "$new_path" 2>/dev/null || true
+            gum style --foreground 2 "✓ ISO copied successfully"
+            echo "$new_path"
+            return 0
+          else
+            gum style --foreground 1 "✗ Failed to copy ISO"
+            return 1
+          fi
+          ;;
+          
+        "Use original path anyway (may fail)")
+          gum style --foreground 8 "Proceeding with original path..."
+          gum style --foreground 8 "If it fails, you can fix permissions manually:"
+          gum style --foreground 8 "  sudo setfacl -m u:qemu:rx $(dirname "$iso_path")"
+          gum style --foreground 8 "  sudo setfacl -m u:qemu:r $iso_path"
+          echo "$iso_path"
+          return 0
+          ;;
+          
+        "Cancel VM creation")
+          gum style --foreground 1 "VM creation cancelled"
+          return 2
+          ;;
+      esac
+    else
+      # ISO is in a safe location (not in home directory)
+      echo "$iso_path"
+      return 0
+    fi
+  }
+  
+  # Check and fix ISO access for first ISO
+  if [[ -n "$first_iso" ]]; then
+    first_iso=$(check_and_fix_iso_access "$first_iso")
+    local iso_check_result=$?
+    if [[ $iso_check_result -eq 2 ]]; then
+      read -p "Press Enter to continue..."
+      return
+    elif [[ $iso_check_result -eq 1 ]]; then
+      gum style --foreground 3 "Continuing without first ISO..."
+      first_iso=""
+    fi
+  fi
+  
+  # Check and fix ISO access for second ISO
+  if [[ -n "$second_iso" ]]; then
+    second_iso=$(check_and_fix_iso_access "$second_iso")
+    local iso_check_result=$?
+    if [[ $iso_check_result -eq 2 ]]; then
+      read -p "Press Enter to continue..."
+      return
+    elif [[ $iso_check_result -eq 1 ]]; then
+      gum style --foreground 3 "Continuing without second ISO..."
+      second_iso=""
     fi
   fi
   
