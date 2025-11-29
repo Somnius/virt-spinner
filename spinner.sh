@@ -2898,6 +2898,33 @@ modify_storage() {
   read -p "Press Enter to continue..."
 }
 
+# Check if EGL/OpenGL is available for 3D acceleration
+check_egl_support() {
+  # Check for render nodes (DRM devices) - primary indicator
+  local render_nodes=$(find /dev/dri -name "renderD*" 2>/dev/null | wc -l)
+  
+  if [[ $render_nodes -eq 0 ]]; then
+    return 1  # No render nodes found - likely no GPU or not accessible
+  fi
+  
+  # Check if we're in a headless environment
+  # Note: Some systems can do 3D acceleration headless, but it's less reliable
+  if [[ -z "$DISPLAY" && -z "$WAYLAND_DISPLAY" ]]; then
+    # Headless - 3D acceleration may not work, but allow user to try
+    # Return 1 to show warning, but user can still enable it
+    return 1
+  fi
+  
+  # Basic check for OpenGL/Mesa libraries
+  # This is a soft check - even if libraries exist, EGL might still fail
+  if ! ldconfig -p 2>/dev/null | grep -qE "libEGL|libGL"; then
+    # Libraries not found - unlikely to work
+    return 1
+  fi
+  
+  return 0  # EGL support appears available (but may still fail at runtime)
+}
+
 create_new_vm() {
   clear
   gum style --bold --foreground 212 "═══ Create New Virtual Machine ═══"
@@ -3504,11 +3531,27 @@ create_new_vm() {
   enable_3d=false
   if [[ "$graphics_type" == "spice" ]]; then
     echo ""
-    if gum confirm "Enable 3D acceleration (virtio-gl)?"; then
-      enable_3d=true
-      gum style --foreground 6 "ℹ️  3D acceleration enabled. Guest needs virtio GPU drivers."
-      gum style --foreground 8 "   Linux: Usually included. Windows: Install virtio-win drivers."
-      sleep 2
+    
+    # Check EGL support before offering 3D acceleration
+    if check_egl_support; then
+      if gum confirm "Enable 3D acceleration (virtio-gl)?"; then
+        enable_3d=true
+        gum style --foreground 6 "ℹ️  3D acceleration enabled. Guest needs virtio GPU drivers."
+        gum style --foreground 8 "   Linux: Usually included. Windows: Install virtio-win drivers."
+        sleep 2
+      fi
+    else
+      # EGL not available - warn user
+      gum style --foreground 3 "⚠️  3D acceleration may not be available on this system."
+      gum style --foreground 8 "   Reason: No GPU render nodes detected or running headless."
+      gum style --foreground 8 "   Tip: 3D acceleration requires GPU support and proper display setup."
+      echo ""
+      if gum confirm "Try to enable 3D acceleration anyway? (may fail during VM creation)"; then
+        enable_3d=true
+        gum style --foreground 3 "⚠️  Warning: VM creation may fail if EGL is not properly configured."
+        gum style --foreground 8 "   If it fails, recreate the VM without 3D acceleration."
+        sleep 3
+      fi
     fi
   fi
   
@@ -3770,7 +3813,13 @@ create_new_vm() {
     read -p "Press Enter to continue with VM creation..."
   fi
   
-  if eval "$virt_cmd"; then
+  # Execute virt-install (outputs to stderr, visible to user)
+  set +e  # Don't exit on error, we'll check the result
+  eval "$virt_cmd" 2>&1
+  local vm_creation_result=$?
+  set -e
+  
+  if [[ $vm_creation_result -eq 0 ]]; then
     gum style --foreground 2 "✓ VM '$vm_name' created successfully!"
     
     # Gather display info
@@ -3825,7 +3874,32 @@ create_new_vm() {
     append_vms "$SESSION_URI" "session"
     append_vms "$SYSTEM_URI" "system"
   else
-    gum style --foreground 1 "✗ VM creation failed. Check error messages above."
+    # Check if 3D acceleration was enabled and provide specific guidance
+    if [[ "$enable_3d" == true ]]; then
+      echo ""
+      gum style --foreground 1 "✗ VM creation failed."
+      gum style --foreground 3 "⚠️  If you see 'egl' or 'render node' errors above, 3D acceleration is not supported."
+      echo ""
+      gum style --foreground 6 "💡 Solution: Recreate the VM without 3D acceleration."
+      gum style --foreground 8 "   When prompted for 3D acceleration, choose 'No' to use standard SPICE."
+      echo ""
+      
+      # Check if VM was partially created and offer cleanup
+      if virsh -c "$SYSTEM_URI" dominfo "$vm_name" &>/dev/null; then
+        if gum confirm "Clean up the failed VM '$vm_name'?"; then
+          virsh -c "$SYSTEM_URI" destroy "$vm_name" 2>/dev/null || true
+          virsh -c "$SYSTEM_URI" undefine "$vm_name" --remove-all-storage 2>/dev/null || true
+          gum style --foreground 2 "✓ Cleaned up failed VM."
+        fi
+      fi
+    else
+      gum style --foreground 1 "✗ VM creation failed. Check error messages above."
+      echo ""
+      gum style --foreground 8 "Common issues:"
+      gum style --foreground 8 "  - ISO file not accessible (check permissions)"
+      gum style --foreground 8 "  - Insufficient disk space"
+      gum style --foreground 8 "  - Invalid OS variant"
+    fi
   fi
   
   echo
