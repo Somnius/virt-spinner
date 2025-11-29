@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Version and Author Info
-VERSION="1.5"
+VERSION="1.6"
 AUTHOR_NAME="Lefteris Iliadis"
 AUTHOR_EMAIL="me@lefteros.com"
 
@@ -56,6 +56,46 @@ SETTINGS_FILE="$HOME/.spinner_settings"
 # End Configuration
 #####################################################################
 
+# Handle command-line arguments
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    init|--init|-i)
+      # Reset to defaults - remove settings file and show message
+      if [[ -f "$SETTINGS_FILE" ]]; then
+        echo "🔄 Resetting VIRT SPINNER to default settings..."
+        rm -f "$SETTINGS_FILE"
+        echo "✅ Settings file removed. Running first-time setup..."
+        echo ""
+        sleep 1
+      else
+        echo "ℹ️  No settings file found. Already at defaults."
+        echo ""
+      fi
+      # Continue with normal execution (will trigger first-run)
+      ;;
+    help|--help|-h)
+      echo "VIRT SPINNER v$VERSION - VM Management Tool"
+      echo ""
+      echo "Usage: $0 [command]"
+      echo ""
+      echo "Commands:"
+      echo "  init, --init, -i    Reset to default settings and run first-time setup"
+      echo "  help, --help, -h    Show this help message"
+      echo ""
+      echo "Examples:"
+      echo "  $0                  Run normally"
+      echo "  $0 init             Reset settings and run first-time setup"
+      echo ""
+      exit 0
+      ;;
+    *)
+      echo "❌ Unknown command: $1"
+      echo "Use '$0 help' for usage information."
+      exit 1
+      ;;
+  esac
+fi
+
 # Save all settings to file (defined early so migration can use it)
 save_settings() {
   cat > "$SETTINGS_FILE" << EOF
@@ -63,19 +103,32 @@ save_settings() {
 # This file is sourced by spinner.sh to persist configuration
 # Settings Version: $VERSION
 # Last Updated: $(date)
+#
+# Default values are shown in comments - modify as needed for your system
+# For immutable distros (Guix, NixOS, Silverblue, etc.), paths may need adjustment
 
 SETTINGS_VERSION="$VERSION"
-MONITOR_REFRESH=$MONITOR_REFRESH
-DISK_CACHE="$DISK_CACHE"
-CPU_MODE="$CPU_MODE"
-SNAPSHOT_AUTO_ENABLED=$SNAPSHOT_AUTO_ENABLED
-SNAPSHOT_NAME_TEMPLATE="$SNAPSHOT_NAME_TEMPLATE"
-SNAPSHOT_LIMIT=$SNAPSHOT_LIMIT
-ISO_DIR="$ISO_DIR"
-DISK_DIR="$DISK_DIR"
-SECURE_BOOT_ENABLED=$SECURE_BOOT_ENABLED
-TPM_ENABLED=$TPM_ENABLED
-NETWORK_MODEL="$NETWORK_MODEL"
+
+# General Settings (defaults shown in comments)
+MONITOR_REFRESH=$MONITOR_REFRESH  # Default: 2
+DISK_CACHE="$DISK_CACHE"  # Default: writeback
+CPU_MODE="$CPU_MODE"  # Default: host-passthrough
+
+# Snapshot Settings
+SNAPSHOT_AUTO_ENABLED=$SNAPSHOT_AUTO_ENABLED  # Default: false
+SNAPSHOT_NAME_TEMPLATE="$SNAPSHOT_NAME_TEMPLATE"  # Default: {vm}-{date}-{time}
+SNAPSHOT_LIMIT=$SNAPSHOT_LIMIT  # Default: 5
+
+# Path Settings (IMPORTANT: Check these on immutable/non-standard distros)
+ISO_DIR="$ISO_DIR"  # Default: \$HOME/iso
+DISK_DIR="$DISK_DIR"  # Default: /var/lib/libvirt/images
+
+# VM Security Defaults
+SECURE_BOOT_ENABLED=$SECURE_BOOT_ENABLED  # Default: false
+TPM_ENABLED=$TPM_ENABLED  # Default: false
+
+# Network Settings
+NETWORK_MODEL="$NETWORK_MODEL"  # Default: e1000
 EOF
 }
 
@@ -266,11 +319,181 @@ EOF
   sleep 1
 }
 
+# Detect immutable/non-standard distros
+detect_immutable_distro() {
+  local is_immutable=false
+  local distro_name=""
+  local distro_type=""
+  
+  # Check /etc/os-release for known immutable distros
+  if [[ -f /etc/os-release ]]; then
+    source /etc/os-release
+    distro_name="${ID:-}"
+    distro_type="${VARIANT_ID:-}"
+    
+    # Known immutable distros
+    case "$distro_name" in
+      nixos|guix)
+        is_immutable=true
+        ;;
+      fedora)
+        if [[ "$distro_type" == "silverblue" ]] || [[ "$distro_type" == "kinoite" ]]; then
+          is_immutable=true
+        fi
+        ;;
+      opensuse*)
+        if [[ "$distro_type" == "microos" ]] || [[ "$distro_type" == "kalpa" ]]; then
+          is_immutable=true
+        fi
+        ;;
+    esac
+    
+    # Check for other indicators
+    if [[ -d /nix/store ]]; then
+      is_immutable=true
+      distro_name="nixos/guix"
+    fi
+  fi
+  
+  if [[ "$is_immutable" == true ]]; then
+    echo "$distro_name"
+    return 0
+  fi
+  
+  return 1
+}
+
+# Check for path issues on first run
+check_paths_on_first_run() {
+  local path_issues=()
+  local immutable_distro=""
+  
+  # Check if immutable distro
+  if immutable_distro=$(detect_immutable_distro 2>/dev/null); then
+    path_issues+=("immutable_distro:$immutable_distro")
+  fi
+  
+  # Check if gum is in expected location
+  if [[ ! -f "$GUM_BIN" ]] && ! command -v gum &>/dev/null; then
+    path_issues+=("gum_not_found")
+  elif [[ -f "$GUM_BIN" ]]; then
+    # Gum found in expected location, good
+    :
+  elif command -v gum &>/dev/null; then
+    # Gum found but not in expected location
+    local gum_path=$(command -v gum)
+    path_issues+=("gum_custom_location:$gum_path")
+  fi
+  
+  # Check OVMF paths (for UEFI support)
+  local ovmf_found=false
+  for path in \
+    "/usr/share/OVMF/OVMF_CODE.fd" \
+    "/usr/share/edk2/ovmf/OVMF_CODE.fd" \
+    "/usr/share/qemu/ovmf-x64/OVMF_CODE.fd"; do
+    if [[ -f "$path" ]]; then
+      ovmf_found=true
+      break
+    fi
+  done
+  
+  if [[ "$ovmf_found" == false ]]; then
+    path_issues+=("ovmf_not_found")
+  fi
+  
+  # Check libvirt paths
+  if [[ ! -d "$DISK_DIR" ]] && ! sudo test -d "$DISK_DIR" 2>/dev/null; then
+    path_issues+=("disk_dir_not_found:$DISK_DIR")
+  fi
+  
+  # Return issues as space-separated string
+  if [[ ${#path_issues[@]} -gt 0 ]]; then
+    echo "${path_issues[*]}"
+    return 1
+  fi
+  
+  return 0
+}
+
 # Check if this is the first run
 check_first_run() {
   # Consider it first run if settings file doesn't exist
   if [[ ! -f "$SETTINGS_FILE" ]]; then
     show_welcome_screen
+    
+    # Check for immutable distro and path issues
+    local path_issues
+    local immutable_distro=""
+    
+    if immutable_distro=$(detect_immutable_distro 2>/dev/null); then
+      echo ""
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      echo ""
+      gum style --bold --foreground 3 "⚠️  IMMUTABLE DISTRO DETECTED: $immutable_distro"
+      echo ""
+      gum style --foreground 8 "VIRT SPINNER is designed for traditional Linux distributions."
+      gum style --foreground 8 "On immutable systems (Guix, NixOS, Silverblue, MicroOS, etc.),"
+      gum style --foreground 8 "paths may be in non-standard locations."
+      echo ""
+      gum style --foreground 8 "📋 IMPORTANT: After setup, please check Settings → Paths and"
+      gum style --foreground 8 "   verify/adjust the following paths for your system:"
+      echo ""
+      gum style --foreground 8 "   • ISO Directory: $ISO_DIR"
+      gum style --foreground 8 "   • Disk Directory: $DISK_DIR"
+      gum style --foreground 8 "   • Gum binary: $GUM_BIN (or use 'command -v gum' to find it)"
+      echo ""
+      gum style --foreground 8 "💡 Tip: Use 'command -v <tool>' to find actual locations"
+      gum style --foreground 8 "   on your system if auto-detection fails."
+      echo ""
+      read -p "Press Enter to continue with setup..."
+      echo ""
+    fi
+    
+    # Check for path issues (only if gum is available, otherwise skip)
+    if command -v gum &>/dev/null; then
+      if path_issues=$(check_paths_on_first_run 2>/dev/null); then
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        gum style --bold --foreground 3 "⚠️  PATH DETECTION WARNINGS"
+        echo ""
+        
+        local has_critical=false
+        for issue in $path_issues; do
+          case "$issue" in
+            gum_not_found)
+              gum style --foreground 1 "✗ Gum toolkit not found"
+              gum style --foreground 8 "   Will be installed during setup"
+              ;;
+            gum_custom_location:*)
+              local gum_path="${issue#gum_custom_location:}"
+              gum style --foreground 3 "⚠️  Gum found at: $gum_path (not default location)"
+              gum style --foreground 8 "   Consider updating GUM_BIN in settings if needed"
+              ;;
+            ovmf_not_found)
+              gum style --foreground 3 "⚠️  OVMF firmware not found in standard locations"
+              gum style --foreground 8 "   UEFI VMs may not work. Install: edk2-ovmf (Fedora) or ovmf (Debian)"
+              ;;
+            disk_dir_not_found:*)
+              local disk_path="${issue#disk_dir_not_found:}"
+              has_critical=true
+              gum style --foreground 1 "✗ Disk directory not found: $disk_path"
+              gum style --foreground 8 "   You MUST set the correct path in Settings → Disk Directory"
+              ;;
+          esac
+        done
+        
+        if [[ "$has_critical" == true ]]; then
+          echo ""
+          gum style --bold --foreground 1 "⚠️  CRITICAL: Some required paths were not found!"
+          gum style --foreground 8 "   Please configure paths in Settings menu after setup completes."
+        fi
+        
+        echo ""
+        read -p "Press Enter to continue with setup..."
+        echo ""
+      fi
+    fi
     
     # Mark that we've shown the welcome screen
     mkdir -p "$(dirname "$SETTINGS_FILE")"
@@ -1146,7 +1369,13 @@ settings_menu() {
     echo
     gum style --bold --foreground 51 "Paths:"
     echo "  ISO directory: $ISO_DIR"
+    if [[ ! -d "$ISO_DIR" ]] && [[ "$ISO_DIR" != "$HOME/iso" ]]; then
+      gum style --foreground 3 "    ⚠️  Directory not found - check path!"
+    fi
     echo "  Disk directory: $DISK_DIR"
+    if [[ ! -d "$DISK_DIR" ]] && ! sudo test -d "$DISK_DIR" 2>/dev/null; then
+      gum style --foreground 3 "    ⚠️  Directory not found - check path!"
+    fi
     echo
     gum style --bold --foreground 51 "VM Security (defaults for new VMs):"
     local secure_boot_status="disabled"
