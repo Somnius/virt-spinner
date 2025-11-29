@@ -285,6 +285,47 @@ EOF
   fi
 }
 
+# Check and setup ISO directory
+init_iso_dir() {
+  # Check if ISO directory setting exists and is valid
+  if [[ -n "$ISO_DIR" && -d "$ISO_DIR" ]]; then
+    return 0
+  fi
+  
+  # Check common ISO locations
+  local common_iso_dirs=(
+    "$HOME/iso"
+    "$HOME/ISOs"
+    "$HOME/Downloads"
+    "$HOME/VMs/iso"
+    "/var/lib/libvirt/images"
+  )
+  
+  local found_dir=""
+  for dir in "${common_iso_dirs[@]}"; do
+    if [[ -d "$dir" ]] && find "$dir" -maxdepth 1 -name "*.iso" 2>/dev/null | grep -q .; then
+      found_dir="$dir"
+      break
+    fi
+  done
+  
+  if [[ -n "$found_dir" ]]; then
+    ISO_DIR="$found_dir"
+  else
+    # Default to ~/iso
+    ISO_DIR="$HOME/iso"
+  fi
+  
+  # Save to settings file
+  if [[ -f "$SETTINGS_FILE" ]]; then
+    if grep -q "^ISO_DIR=" "$SETTINGS_FILE"; then
+      sed -i "s|^ISO_DIR=.*|ISO_DIR=\"$ISO_DIR\"|" "$SETTINGS_FILE"
+    else
+      echo "ISO_DIR=\"$ISO_DIR\"" >> "$SETTINGS_FILE"
+    fi
+  fi
+}
+
 # Distro detection function
 detect_distro() {
   local distro=""
@@ -675,6 +716,9 @@ check_dependencies
 
 # Initialize and detect libvirt images directory
 init_libvirt_dir
+
+# Initialize and detect ISO directory
+init_iso_dir
 
 # Show completion message for first run
 show_setup_complete() {
@@ -2921,39 +2965,122 @@ create_new_vm() {
   
   # First ISO (Boot)
   first_iso=""
-  if [[ -d "$ISO_DIR" ]]; then
+  
+  # Check if ISO directory exists
+  if [[ ! -d "$ISO_DIR" ]]; then
+    gum style --foreground 3 "⚠️  ISO directory not found: $ISO_DIR"
+    echo ""
+    
+    local iso_choice
+    iso_choice=$(gum choose --header="What would you like to do?" \
+      "Browse for ISO file manually" \
+      "Create ISO directory ($ISO_DIR)" \
+      "No ISO (PXE/Network boot)")
+    
+    case "$iso_choice" in
+      "Browse for ISO file manually")
+        gum style --foreground 6 "Enter full path to ISO file:"
+        read -e -p "> " first_iso
+        if [[ -f "$first_iso" ]]; then
+          gum style --foreground 2 "✓ ISO file found: $first_iso"
+        else
+          gum style --foreground 1 "✗ File not found, continuing without ISO"
+          first_iso=""
+        fi
+        ;;
+      "Create ISO directory ($ISO_DIR)")
+        mkdir -p "$ISO_DIR"
+        gum style --foreground 2 "✓ Created directory: $ISO_DIR"
+        gum style --foreground 8 "Please copy your ISO files there and run the script again."
+        first_iso=""
+        ;;
+      "No ISO (PXE/Network boot)")
+        first_iso=""
+        ;;
+    esac
+  else
+    # Directory exists, scan for ISOs
     iso_files=()
     while IFS= read -r iso_file; do
       iso_files+=("$(basename "$iso_file")")
     done < <(find "$ISO_DIR" -maxdepth 1 -name "*.iso" 2>/dev/null | sort)
     
+    iso_files+=("Browse for ISO elsewhere")
     iso_files+=("No ISO (PXE/Network boot)")
     
-    if [ ${#iso_files[@]} -gt 1 ]; then
+    if [ ${#iso_files[@]} -gt 2 ]; then
       selected_iso=$(gum choose --header="Select Boot ISO (1st CD-ROM):" "${iso_files[@]}")
-      if [[ "$selected_iso" != "No ISO (PXE/Network boot)" ]]; then
-        first_iso="$ISO_DIR/$selected_iso"
-      fi
+      
+      case "$selected_iso" in
+        "Browse for ISO elsewhere")
+          gum style --foreground 6 "Enter full path to ISO file:"
+          read -e -p "> " first_iso
+          if [[ ! -f "$first_iso" ]]; then
+            gum style --foreground 1 "✗ File not found, continuing without ISO"
+            first_iso=""
+          fi
+          ;;
+        "No ISO (PXE/Network boot)")
+          first_iso=""
+          ;;
+        *)
+          first_iso="$ISO_DIR/$selected_iso"
+          ;;
+      esac
     else
       gum style --foreground 3 "No ISOs found in $ISO_DIR"
+      
+      if gum confirm "Browse for ISO file manually?"; then
+        gum style --foreground 6 "Enter full path to ISO file:"
+        read -e -p "> " first_iso
+        if [[ ! -f "$first_iso" ]]; then
+          gum style --foreground 1 "✗ File not found, continuing without ISO"
+          first_iso=""
+        fi
+      fi
     fi
   fi
   
-  # Second ISO
+  # Second ISO (only ask if first ISO was selected or user wants one)
   second_iso=""
-  if gum confirm "Add a second ISO (e.g., drivers)?"; then
+  if [[ -n "$first_iso" ]] || gum confirm "Add an ISO (e.g., drivers, second CD)?"; then
     if [[ -d "$ISO_DIR" ]]; then
       iso_files2=()
       while IFS= read -r iso_file; do
         iso_files2+=("$(basename "$iso_file")")
       done < <(find "$ISO_DIR" -maxdepth 1 -name "*.iso" 2>/dev/null | sort)
       
+      iso_files2+=("Browse for ISO elsewhere")
       iso_files2+=("Skip")
       
-      if [ ${#iso_files2[@]} -gt 1 ]; then
-        selected_iso2=$(gum choose --header="Select Second ISO:" "${iso_files2[@]}")
-        if [[ "$selected_iso2" != "Skip" ]]; then
-          second_iso="$ISO_DIR/$selected_iso2"
+      if [ ${#iso_files2[@]} -gt 2 ]; then
+        selected_iso2=$(gum choose --header="Select Second ISO (optional):" "${iso_files2[@]}")
+        
+        case "$selected_iso2" in
+          "Browse for ISO elsewhere")
+            gum style --foreground 6 "Enter full path to ISO file:"
+            read -e -p "> " second_iso
+            if [[ ! -f "$second_iso" ]]; then
+              gum style --foreground 1 "✗ File not found, skipping second ISO"
+              second_iso=""
+            fi
+            ;;
+          "Skip")
+            second_iso=""
+            ;;
+          *)
+            second_iso="$ISO_DIR/$selected_iso2"
+            ;;
+        esac
+      fi
+    else
+      # ISO_DIR doesn't exist, offer manual browse
+      if gum confirm "Browse for second ISO file manually?"; then
+        gum style --foreground 6 "Enter full path to ISO file:"
+        read -e -p "> " second_iso
+        if [[ ! -f "$second_iso" ]]; then
+          gum style --foreground 1 "✗ File not found, skipping second ISO"
+          second_iso=""
         fi
       fi
     fi
