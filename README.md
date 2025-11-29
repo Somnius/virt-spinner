@@ -1,4 +1,4 @@
-# 🎯 Virt SPINNER v1.1
+# 🎯 Virt SPINNER v1.3
 ## 💻 The Professional TUI Alternative to Gnome-Boxes & virt-manager
 
 > **Tired of slow, mouse-heavy GUI tools?** VIRT SPINNER brings full libvirt/QEMU/KVM power to your terminal.  
@@ -7,7 +7,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.1-blue.svg?cacheSeconds=2592000)
+![Version](https://img.shields.io/badge/version-1.3-blue.svg?cacheSeconds=2592000)
 ![Shell](https://img.shields.io/badge/shell-bash-green.svg)
 ![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-Personal-orange.svg)
@@ -513,7 +513,39 @@ Still in terminal, context preserved
 
 ---
 
-## What's New in v1.1
+## What's New in v1.3
+
+**VIRT SPINNER v1.3** adds console connection for running VMs and fixes orphaned disk detection in diagnostics.
+
+### 🆕 New in v1.3
+
+- **🖥️ Connect to Console** - New menu option to connect to VNC/SPICE console for running VMs
+  - Auto-detects graphics type (VNC or SPICE)
+  - Launches virt-viewer automatically
+  - Returns to menu when console closes
+  - Works seamlessly with existing VM management workflow
+- **🔍 Fixed Orphaned Disk Detection** - Diagnostics now properly detects orphaned disk images
+  - Uses detected DISK_DIR instead of hardcoded path
+  - Detects all disk image formats (.qcow2, .qcow, .img, .raw)
+  - Improved path matching logic for better accuracy
+  - Shows all disk images with status (in use / orphaned)
+  - Offers deletion option for orphaned images with double confirmation
+
+## Previous Versions
+
+### v1.2 - Console Exit Fix & Error Handling Improvements
+
+**VIRT SPINNER v1.2** fixes the console exit issue and improves error handling to ensure the script always returns to the main menu after VM creation.
+
+### 🆕 New in v1.2
+
+- **🐛 Console Exit Fix** - Script now properly returns to main menu after SPICE/VNC console closes
+- **🛡️ Enhanced Error Handling** - Post-creation operations no longer cause script exit on errors
+- **✅ Improved Robustness** - Better handling of virsh commands and network detection failures
+
+## Previous Versions
+
+### v1.1 - Firmware Selection & 3D Acceleration Improvements
 
 **VIRT SPINNER v1.1** adds firmware selection support, improved 3D acceleration handling, and enhanced UEFI boot configuration.
 
@@ -769,9 +801,11 @@ All with **clear progress indicators** [1/4], [2/4], etc.
 
 - **🔧 Run Diagnostics**: System health checks with:
   - Connection status verification
-  - Smart orphan disk detection
+  - Smart orphan disk detection (FIXED in v1.3)
+  - Detects all disk image formats (.qcow2, .qcow, .img, .raw)
+  - Uses detected DISK_DIR instead of hardcoded path
   - Color-coded display (🟢 in use, 🔴 orphaned)
-  - Safe orphan cleanup with confirmations
+  - Safe orphan cleanup with double confirmation
 
 - **❌ Exit**: Quit the application
 
@@ -793,6 +827,12 @@ All with **clear progress indicators** [1/4], [2/4], etc.
 - CPU, memory, disk capacity/allocation
 - Current state and uptime
 - Network and graphics configuration
+
+**🖥️ Connect to Console** - Connect to VM's graphical console (NEW in v1.3):
+- Auto-detects VNC or SPICE graphics
+- Launches virt-viewer automatically
+- Returns to menu when console closes
+- Only available when VM is running
 
 **Pause/Resume** - Suspend VM execution (like VMware pause)
 
@@ -1307,6 +1347,18 @@ mkdir -p ~/iso
 
 ## Version History
 
+### v1.3 (2025-11-29) - Console Connection & Orphaned Disk Detection Fix
+- 🖥️ **Connect to Console** - New menu option to connect to VNC/SPICE console for running VMs
+- 🔍 **Fixed orphaned disk detection** - Properly detects all disk image formats and uses detected DISK_DIR
+- ✅ **Improved diagnostics** - Better path matching and comprehensive disk image scanning
+- 🛡️ **Enhanced safety** - Double confirmation for orphaned disk deletion
+
+### v1.2 (2025-10-25) - Console Exit Fix & Error Handling Improvements
+- 🐛 **Fixed console exit issue** - Script now properly returns to main menu after SPICE/VNC console closes
+- 🛡️ **Enhanced error handling** - Post-creation operations (display info, network info) no longer cause script exit on errors
+- ✅ **Improved robustness** - Added error handling for virsh commands and network detection
+- 🔧 **Better user experience** - Script always returns to menu after VM creation, even if some info gathering fails
+
 ### v1.1 (2025-11-29) - Firmware Selection & 3D Acceleration Improvements
 - 💾 **UEFI/BIOS firmware selection** during VM creation
 - 🎯 **Context-aware firmware guidance** (UEFI for modern OSes, BIOS for legacy)
@@ -1358,6 +1410,11 @@ mkdir -p ~/iso
 
 ## Latest Improvements
 
+- ✅ Connect to Console for running VMs (v1.3) - Auto-detect VNC/SPICE and launch viewer
+- ✅ Fixed orphaned disk detection (v1.3) - Properly detects all disk formats and uses detected paths
+- ✅ Enhanced diagnostics (v1.3) - Comprehensive disk image scanning with deletion option
+- ✅ Console exit fix (v1.2) - Returns to menu after console closes
+- ✅ Enhanced error handling (v1.2) - Post-creation operations no longer cause script exit
 - ✅ Smart 3D acceleration detection (v1.1) - Checks EGL support before enabling
 - ✅ EGL error handling with graceful recovery (v1.1)
 - ✅ OVMF firmware detection and validation (v1.1)
@@ -1468,7 +1525,7 @@ mkdir -p ~/iso
 
 <div align="center">
 
-**VIRT SPINNER v1.1**  
+**VIRT SPINNER v1.3**  
 A project by **Lefteris Iliadis** • [me@lefteros.com](mailto:me@lefteros.com)
 
 ![Made with Love](https://img.shields.io/badge/Made%20with-❤️-red.svg)
