@@ -1,4 +1,4 @@
-# 🎯 Virt SPINNER v1.5
+# 🎯 Virt SPINNER v1.6
 ## 💻 The Professional TUI Alternative to Gnome-Boxes & virt-manager
 
 > **Tired of slow, mouse-heavy GUI tools?** VIRT SPINNER brings full libvirt/QEMU/KVM power to your terminal.  
@@ -7,7 +7,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.5-blue.svg?cacheSeconds=2592000)
+![Version](https://img.shields.io/badge/version-1.6-blue.svg?cacheSeconds=2592000)
 ![Shell](https://img.shields.io/badge/shell-bash-green.svg)
 ![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-Personal-orange.svg)
@@ -231,6 +231,32 @@
 **Minimum:** 4GB RAM • 2 CPU cores • 20GB storage | **Recommended:** 16GB RAM • 4+ cores • 500GB storage
 
 </div>
+
+### ⚠️ Important: Immutable & Non-Standard Distributions
+
+**VIRT SPINNER is designed for traditional Linux distributions** with standard paths. While it may work on immutable or non-standard distributions, **path configuration is critical**.
+
+**Known limitations on:**
+- **Guix** - Packages in profiles, not `/usr/bin`
+- **NixOS** - Packages in `/nix/store`, non-standard paths
+- **Silverblue/Kinoite** - Read-only `/usr`, overlay packages
+- **MicroOS/Kalpa** - Similar read-only structure
+- **Other niche distros** - May have custom package locations
+
+**What to do on these systems:**
+1. **First run will detect** if you're on an immutable distro and warn you
+2. **Check Settings → Paths** immediately after setup:
+   - Verify ISO directory path
+   - Verify disk directory path
+   - Check if gum binary location is correct (use `command -v gum` to find it)
+3. **If paths are not found**, the script will warn you - configure them manually in Settings
+4. **For OVMF firmware**, paths may differ - check your package manager for actual locations
+
+**Path detection tips:**
+- Use `command -v gum` to find gum binary location
+- Use `virsh pool-dumpxml` to find libvirt storage paths
+- Check package locations with your distro's package manager
+- Settings file (`~/.spinner_settings`) shows all default paths with comments
 
 ---
 
@@ -513,7 +539,51 @@ Still in terminal, context preserved
 
 ---
 
-## What's New in v1.4
+## What's New in v1.6
+
+**VIRT SPINNER v1.6** adds immutable distro detection, path validation warnings, improved settings documentation, and a reset command for non-standard systems.
+
+### 🆕 New in v1.6
+
+- **🔍 Immutable Distro Detection** - Automatic detection and warnings for non-standard systems
+  - Detects Guix, NixOS, Silverblue, Kinoite, MicroOS, Kalpa, and similar systems
+  - First-run warning with guidance for path configuration
+  - Helps users on immutable distros configure paths correctly
+- **⚠️ Path Validation & Warnings** - Checks for missing paths and provides guidance
+  - Validates gum binary location (checks both default and custom locations)
+  - Checks OVMF firmware paths
+  - Verifies libvirt disk directory exists
+  - Warns if critical paths are missing
+  - Guides users to Settings menu for manual configuration
+- **📝 Enhanced Settings Documentation** - All defaults visible in settings file
+  - Settings file now includes comments showing all default values
+  - Makes it easy to see and modify paths for non-standard systems
+  - Clear documentation of what each setting does
+  - Helps users on niche/immutable distros configure correctly
+- **🔄 Reset to Defaults Command** - Easy way to reset all settings
+  - Use `spinner.sh init` (or `--init` or `-i`) to reset to defaults
+  - Removes settings file and runs first-time setup again
+  - Perfect for fixing misconfigured paths or starting fresh
+  - Help command available with `spinner.sh help`
+
+## Previous Versions
+
+### v1.5 - Network Model Configuration
+
+**VIRT SPINNER v1.5** adds network model configuration with Intel e1000 as default for universal compatibility, fixing network issues with VMs that don't have virtio drivers.
+
+### 🆕 New in v1.5
+
+- **🌐 Network Model Configuration** - Choose network adapter type for maximum compatibility
+  - Default: e1000 (Intel PRO/1000) - works out of the box with all operating systems
+  - No drivers needed in guest OS - solves network issues immediately
+  - Alternative options: virtio (requires drivers, better performance), rtl8139, ne2k_pci
+  - Configurable in Settings menu as default for all new VMs
+  - Applied automatically to all new VM creations
+  - Perfect for Linux VMs that don't have virtio drivers installed
+  - Works with Windows, Linux, BSD, and other operating systems
+
+### v1.4 - Secure Boot, TPM, Settings Migration & Path Configuration
 
 **VIRT SPINNER v1.4** adds Secure Boot and TPM configuration options, ISO directory path settings, and intelligent settings migration.
 
@@ -548,17 +618,47 @@ Still in terminal, context preserved
 
 ## Previous Versions
 
+### v1.5 - Network Model Configuration
+
+**VIRT SPINNER v1.5** adds network model configuration with Intel e1000 as default for universal compatibility, fixing network issues with VMs that don't have virtio drivers.
+
+### 🆕 New in v1.5
+
+- **🌐 Network Model Configuration** - Choose network adapter type for maximum compatibility
+  - Default: e1000 (Intel PRO/1000) - works out of the box with all operating systems
+  - No drivers needed in guest OS - solves network issues immediately
+  - Alternative options: virtio (requires drivers, better performance), rtl8139, ne2k_pci
+  - Configurable in Settings menu as default for all new VMs
+  - Applied automatically to all new VM creations
+  - Perfect for Linux VMs that don't have virtio drivers installed
+  - Works with Windows, Linux, BSD, and other operating systems
+
 ### v1.4 - Secure Boot, TPM, Settings Migration & Path Configuration
 
 **VIRT SPINNER v1.4** adds Secure Boot and TPM configuration options, ISO directory path settings, and intelligent settings migration.
 
 ### 🆕 New in v1.4
 
-- **🔒 Secure Boot & TPM Configuration** - Full control over VM security features with defaults and per-VM override
-- **📁 ISO Directory Path Settings** - Configurable ISO and disk directory paths in Settings menu
-- **🔄 Intelligent Settings Migration** - Preserves user settings across versions with automatic backup and version tracking
-- **✅ Settings Version Tracking** - Automatic migration when upgrading, only resets if defaults changed
-- **🛡️ User Notification** - Informs users about any settings that were reset during migration
+- **🔒 Secure Boot & TPM Configuration** - Full control over VM security features
+  - Secure Boot toggle (disabled by default to avoid MOK enrollment prompts)
+  - TPM emulation toggle (disabled by default)
+  - Configurable in Settings menu as defaults for all new VMs
+  - Per-VM override during VM creation
+  - Only available for UEFI firmware (BIOS doesn't support these features)
+  - Prevents MOK enrollment prompts with distros like Nobara
+- **📁 ISO Directory Path Settings** - Change ISO storage location
+  - Configurable ISO directory path in Settings menu
+  - Disk directory path also configurable
+  - Automatic directory creation if needed
+  - Path validation and permission checking
+  - Settings persist across sessions
+- **🔄 Intelligent Settings Migration** - Preserves your settings across versions
+  - Automatic settings file version tracking
+  - Merges new settings with existing ones (doesn't overwrite)
+  - Only resets settings if defaults changed (with user notification)
+  - Automatic backup of settings before migration
+  - Informs user about any settings that were reset
+  - Seamless upgrade experience
 
 ### v1.3 - Console Connection & Orphaned Disk Detection Fix
 
@@ -1210,6 +1310,22 @@ chmod +x ~/spinner.sh
 ~/spinner.sh
 ```
 
+### Command-Line Options
+```bash
+# Run normally
+~/spinner.sh
+
+# Reset to defaults and run first-time setup
+~/spinner.sh init
+# or
+~/spinner.sh --init
+# or
+~/spinner.sh -i
+
+# Show help
+~/spinner.sh help
+```
+
 ### First Run
 1. Script displays welcome screen with ASCII art
 2. User confirms setup (lists all requirements)
@@ -1252,6 +1368,21 @@ chmod +x ~/spinner.sh
 - Loads saved settings instantly
 - No re-detection needed
 - Jumps straight to main menu
+
+### Reset to Defaults
+If you need to reset all settings to defaults and run first-time setup again:
+```bash
+~/spinner.sh init
+# or
+~/spinner.sh --init
+# or
+~/spinner.sh -i
+```
+This will:
+- Remove your settings file (`~/.spinner_settings`)
+- Reset all configuration to defaults
+- Run the first-time setup wizard again
+- Useful if you've misconfigured paths or want a fresh start
 
 ---
 
@@ -1410,7 +1541,13 @@ mkdir -p ~/iso
 
 ## Version History
 
-### v1.4 (2025-11-29) - Secure Boot, TPM, Network Model, Settings Migration & Path Configuration
+### v1.6 (2025-11-29) - Immutable Distro Detection, Path Validation & Reset Command
+- 🔍 **Immutable Distro Detection** - Automatic detection and warnings for non-standard systems
+- ⚠️ **Path Validation & Warnings** - Checks for missing paths and provides guidance
+- 📝 **Enhanced Settings Documentation** - All defaults visible in settings file with comments
+- 🛡️ **Better Non-Standard Distro Support** - Helps users configure paths on Guix, NixOS, Silverblue, etc.
+- 🔄 **Reset to Defaults Command** - `spinner.sh init` to reset all settings and run first-time setup
+
 ### v1.5 (2025-11-29) - Network Model Configuration
 - 🌐 **Network Model Configuration** - Default e1000 (Intel PRO/1000) adapter for universal compatibility
   - Works out of the box with all operating systems (no drivers needed)
@@ -1489,6 +1626,10 @@ mkdir -p ~/iso
 
 ## Latest Improvements
 
+- ✅ Reset to defaults command (v1.6) - `spinner.sh init` to reset all settings and run first-time setup
+- ✅ Immutable distro detection (v1.6) - Automatic detection and warnings for Guix, NixOS, Silverblue, etc.
+- ✅ Path validation & warnings (v1.6) - Checks for missing paths and guides users to configure them
+- ✅ Enhanced settings documentation (v1.6) - All defaults visible in settings file with comments
 - ✅ Network model configuration (v1.5) - Default e1000 adapter for universal compatibility, no drivers needed
 - ✅ Secure Boot & TPM configuration (v1.4) - Disabled by default to avoid MOK prompts, configurable per-VM
 - ✅ ISO directory path settings (v1.4) - Change ISO and disk storage locations from Settings menu
@@ -1613,7 +1754,7 @@ mkdir -p ~/iso
 
 <div align="center">
 
-**VIRT SPINNER v1.5**  
+**VIRT SPINNER v1.6**  
 A project by **Lefteris Iliadis** • [me@lefteros.com](mailto:me@lefteros.com)
 
 ![Made with Love](https://img.shields.io/badge/Made%20with-❤️-red.svg)
