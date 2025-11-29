@@ -2963,6 +2963,66 @@ create_new_vm() {
     fi
   fi
   
+  # TUI File Browser for ISOs
+  browse_for_iso() {
+    local header="$1"
+    local start_dir="${2:-$HOME}"
+    
+    gum style --foreground 6 "$header" >&2
+    echo "" >&2
+    
+    local browse_choice
+    browse_choice=$(gum choose --header="How would you like to browse?" \
+      "TUI file browser (navigate visually)" \
+      "Type path manually (with tab completion)")
+    
+    case "$browse_choice" in
+      "TUI file browser (navigate visually)")
+        gum style --foreground 8 "Navigate with arrows, press Enter to select, Ctrl+C to cancel" >&2
+        gum style --foreground 8 "Starting from: $start_dir" >&2
+        echo "" >&2
+        
+        # Use gum file to browse
+        local selected_file
+        selected_file=$(gum file --directory="$start_dir" --file --height=20 2>/dev/null)
+        
+        if [[ -f "$selected_file" ]]; then
+          # Validate it's an ISO
+          if [[ "$selected_file" == *.iso ]]; then
+            echo "$selected_file"
+            return 0
+          else
+            gum style --foreground 3 "⚠️  Selected file is not an ISO: $selected_file" >&2
+            if gum confirm "Use it anyway?"; then
+              echo "$selected_file"
+              return 0
+            else
+              return 1
+            fi
+          fi
+        else
+          gum style --foreground 1 "✗ No file selected" >&2
+          return 1
+        fi
+        ;;
+        
+      "Type path manually (with tab completion)")
+        gum style --foreground 6 "Enter full path to ISO file:" >&2
+        local manual_path
+        read -e -p "> " manual_path
+        
+        if [[ -f "$manual_path" ]]; then
+          gum style --foreground 2 "✓ ISO file found: $manual_path" >&2
+          echo "$manual_path"
+          return 0
+        else
+          gum style --foreground 1 "✗ File not found: $manual_path" >&2
+          return 1
+        fi
+        ;;
+    esac
+  }
+  
   # First ISO (Boot)
   first_iso=""
   
@@ -2973,19 +3033,17 @@ create_new_vm() {
     
     local iso_choice
     iso_choice=$(gum choose --header="What would you like to do?" \
-      "Browse for ISO file manually" \
+      "Browse for ISO file" \
       "Create ISO directory ($ISO_DIR)" \
       "No ISO (PXE/Network boot)")
     
     case "$iso_choice" in
-      "Browse for ISO file manually")
-        gum style --foreground 6 "Enter full path to ISO file:"
-        read -e -p "> " first_iso
-        if [[ -f "$first_iso" ]]; then
-          gum style --foreground 2 "✓ ISO file found: $first_iso"
+      "Browse for ISO file")
+        first_iso=$(browse_for_iso "Select Boot ISO (1st CD-ROM)" "$HOME")
+        if [[ -z "$first_iso" ]]; then
+          gum style --foreground 1 "✗ No ISO selected, continuing without ISO"
         else
-          gum style --foreground 1 "✗ File not found, continuing without ISO"
-          first_iso=""
+          gum style --foreground 2 "✓ Selected: $first_iso"
         fi
         ;;
       "Create ISO directory ($ISO_DIR)")
@@ -3013,11 +3071,11 @@ create_new_vm() {
       
       case "$selected_iso" in
         "Browse for ISO elsewhere")
-          gum style --foreground 6 "Enter full path to ISO file:"
-          read -e -p "> " first_iso
-          if [[ ! -f "$first_iso" ]]; then
-            gum style --foreground 1 "✗ File not found, continuing without ISO"
-            first_iso=""
+          first_iso=$(browse_for_iso "Select Boot ISO (1st CD-ROM)" "$HOME")
+          if [[ -z "$first_iso" ]]; then
+            gum style --foreground 1 "✗ No ISO selected, continuing without ISO"
+          else
+            gum style --foreground 2 "✓ Selected: $first_iso"
           fi
           ;;
         "No ISO (PXE/Network boot)")
@@ -3030,12 +3088,12 @@ create_new_vm() {
     else
       gum style --foreground 3 "No ISOs found in $ISO_DIR"
       
-      if gum confirm "Browse for ISO file manually?"; then
-        gum style --foreground 6 "Enter full path to ISO file:"
-        read -e -p "> " first_iso
-        if [[ ! -f "$first_iso" ]]; then
-          gum style --foreground 1 "✗ File not found, continuing without ISO"
-          first_iso=""
+      if gum confirm "Browse for ISO file?"; then
+        first_iso=$(browse_for_iso "Select Boot ISO (1st CD-ROM)" "$ISO_DIR")
+        if [[ -z "$first_iso" ]]; then
+          gum style --foreground 1 "✗ No ISO selected, continuing without ISO"
+        else
+          gum style --foreground 2 "✓ Selected: $first_iso"
         fi
       fi
     fi
@@ -3058,11 +3116,11 @@ create_new_vm() {
         
         case "$selected_iso2" in
           "Browse for ISO elsewhere")
-            gum style --foreground 6 "Enter full path to ISO file:"
-            read -e -p "> " second_iso
-            if [[ ! -f "$second_iso" ]]; then
-              gum style --foreground 1 "✗ File not found, skipping second ISO"
-              second_iso=""
+            second_iso=$(browse_for_iso "Select Second ISO (optional)" "$HOME")
+            if [[ -z "$second_iso" ]]; then
+              gum style --foreground 1 "✗ No ISO selected, skipping second ISO"
+            else
+              gum style --foreground 2 "✓ Selected: $second_iso"
             fi
             ;;
           "Skip")
@@ -3074,13 +3132,13 @@ create_new_vm() {
         esac
       fi
     else
-      # ISO_DIR doesn't exist, offer manual browse
-      if gum confirm "Browse for second ISO file manually?"; then
-        gum style --foreground 6 "Enter full path to ISO file:"
-        read -e -p "> " second_iso
-        if [[ ! -f "$second_iso" ]]; then
-          gum style --foreground 1 "✗ File not found, skipping second ISO"
-          second_iso=""
+      # ISO_DIR doesn't exist, offer browse
+      if gum confirm "Browse for second ISO file?"; then
+        second_iso=$(browse_for_iso "Select Second ISO (optional)" "$HOME")
+        if [[ -z "$second_iso" ]]; then
+          gum style --foreground 1 "✗ No ISO selected, skipping second ISO"
+        else
+          gum style --foreground 2 "✓ Selected: $second_iso"
         fi
       fi
     fi
