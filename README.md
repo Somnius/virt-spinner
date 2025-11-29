@@ -1,4 +1,4 @@
-# 🎯 Virt SPINNER v1.3
+# 🎯 Virt SPINNER v1.4
 ## 💻 The Professional TUI Alternative to Gnome-Boxes & virt-manager
 
 > **Tired of slow, mouse-heavy GUI tools?** VIRT SPINNER brings full libvirt/QEMU/KVM power to your terminal.  
@@ -7,7 +7,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.3-blue.svg?cacheSeconds=2592000)
+![Version](https://img.shields.io/badge/version-1.4-blue.svg?cacheSeconds=2592000)
 ![Shell](https://img.shields.io/badge/shell-bash-green.svg)
 ![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-Personal-orange.svg)
@@ -513,7 +513,36 @@ Still in terminal, context preserved
 
 ---
 
-## What's New in v1.3
+## What's New in v1.4
+
+**VIRT SPINNER v1.4** adds Secure Boot and TPM configuration options, ISO directory path settings, and intelligent settings migration.
+
+### 🆕 New in v1.4
+
+- **🔒 Secure Boot & TPM Configuration** - Full control over VM security features
+  - Secure Boot toggle (disabled by default to avoid MOK enrollment prompts)
+  - TPM emulation toggle (disabled by default)
+  - Configurable in Settings menu as defaults for all new VMs
+  - Per-VM override during VM creation
+  - Only available for UEFI firmware (BIOS doesn't support these features)
+  - Prevents MOK enrollment prompts with distros like Nobara
+- **📁 ISO Directory Path Settings** - Change ISO storage location
+  - Configurable ISO directory path in Settings menu
+  - Disk directory path also configurable
+  - Automatic directory creation if needed
+  - Path validation and permission checking
+  - Settings persist across sessions
+- **🔄 Intelligent Settings Migration** - Preserves your settings across versions
+  - Automatic settings file version tracking
+  - Merges new settings with existing ones (doesn't overwrite)
+  - Only resets settings if defaults changed (with user notification)
+  - Automatic backup of settings before migration
+  - Informs user about any settings that were reset
+  - Seamless upgrade experience
+
+## Previous Versions
+
+### v1.3 - Console Connection & Orphaned Disk Detection Fix
 
 **VIRT SPINNER v1.3** adds console connection for running VMs and fixes orphaned disk detection in diagnostics.
 
@@ -754,6 +783,7 @@ All with **clear progress indicators** [1/4], [2/4], etc.
   - **Memory allocation** with system RAM detection and safe maximums
   - **CPU allocation** with overcommit warnings
   - **Firmware selection** (UEFI/BIOS) with use-case guidance and OVMF detection
+  - **Secure Boot & TPM options** (for UEFI VMs) - use defaults or override per-VM
   - **Disk sizing** with available space monitoring
   - **TUI ISO browser** with visual directory navigation
   - **Flexible ISO selection** (TUI browse, manual path, or skip)
@@ -797,7 +827,13 @@ All with **clear progress indicators** [1/4], [2/4], etc.
     - Auto-snapshot enable/disable
     - Snapshot name template with placeholders: `{vm}`, `{date}`, `{time}`, `{n}`
     - Snapshot limit per VM (default: 5, 0=unlimited)
-  - Settings persist in `~/.spinner_settings`
+  - Path settings:
+    - ISO directory path (configurable, auto-created if needed)
+    - Disk directory path (libvirt images location)
+  - VM Security defaults (for new VMs):
+    - Secure Boot (disabled by default to avoid MOK prompts)
+    - TPM emulation (disabled by default)
+  - Settings persist in `~/.spinner_settings` with version tracking
 
 - **🔧 Run Diagnostics**: System health checks with:
   - Connection status verification
@@ -1347,6 +1383,13 @@ mkdir -p ~/iso
 
 ## Version History
 
+### v1.4 (2025-11-29) - Secure Boot, TPM, Settings Migration & Path Configuration
+- 🔒 **Secure Boot & TPM Configuration** - Full control over VM security features with defaults and per-VM override
+- 📁 **ISO Directory Path Settings** - Configurable ISO and disk directory paths in Settings menu
+- 🔄 **Intelligent Settings Migration** - Preserves user settings across versions with automatic backup and version tracking
+- ✅ **Settings Version Tracking** - Automatic migration when upgrading, only resets if defaults changed
+- 🛡️ **User Notification** - Informs users about any settings that were reset during migration
+
 ### v1.3 (2025-11-29) - Console Connection & Orphaned Disk Detection Fix
 - 🖥️ **Connect to Console** - New menu option to connect to VNC/SPICE console for running VMs
 - 🔍 **Fixed orphaned disk detection** - Properly detects all disk image formats and uses detected DISK_DIR
@@ -1410,6 +1453,10 @@ mkdir -p ~/iso
 
 ## Latest Improvements
 
+- ✅ Secure Boot & TPM configuration (v1.4) - Disabled by default to avoid MOK prompts, configurable per-VM
+- ✅ ISO directory path settings (v1.4) - Change ISO and disk storage locations from Settings menu
+- ✅ Intelligent settings migration (v1.4) - Preserves user settings across versions with automatic backup
+- ✅ Settings version tracking (v1.4) - Seamless upgrades with user notification of any resets
 - ✅ Connect to Console for running VMs (v1.3) - Auto-detect VNC/SPICE and launch viewer
 - ✅ Fixed orphaned disk detection (v1.3) - Properly detects all disk formats and uses detected paths
 - ✅ Enhanced diagnostics (v1.3) - Comprehensive disk image scanning with deletion option
@@ -1525,7 +1572,7 @@ mkdir -p ~/iso
 
 <div align="center">
 
-**VIRT SPINNER v1.3**  
+**VIRT SPINNER v1.4**  
 A project by **Lefteris Iliadis** • [me@lefteros.com](mailto:me@lefteros.com)
 
 ![Made with Love](https://img.shields.io/badge/Made%20with-❤️-red.svg)
