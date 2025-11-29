@@ -3094,9 +3094,9 @@ create_new_vm() {
     
     # Check if ISO is in user's home directory (common permission issue)
     if [[ "$iso_path" == "$HOME"* ]]; then
-      gum style --foreground 3 "⚠️  ISO is in your home directory: $iso_path"
-      gum style --foreground 3 "   QEMU/libvirt may not have permission to access it."
-      echo ""
+      gum style --foreground 3 "⚠️  ISO is in your home directory: $iso_path" >&2
+      gum style --foreground 3 "   QEMU/libvirt may not have permission to access it." >&2
+      echo "" >&2
       
       local fix_choice
       fix_choice=$(gum choose --header="How would you like to proceed?" \
@@ -3108,14 +3108,14 @@ create_new_vm() {
       
       case "$fix_choice" in
         "Fix permissions (add qemu user access)")
-          gum style --foreground 6 "Adding qemu user permissions with ACL..."
+          gum style --foreground 6 "Adding qemu user permissions with ACL..." >&2
           
           # Add execute permission on parent directories so qemu can traverse
           local current_dir="$iso_dir"
           while [[ "$current_dir" != "/" && "$current_dir" == "$HOME"* ]]; do
             sudo setfacl -m u:qemu:x "$current_dir" 2>/dev/null || {
-              gum style --foreground 1 "✗ Failed to set ACL (is acl package installed?)"
-              gum style --foreground 8 "Try: sudo dnf install acl"
+              gum style --foreground 1 "✗ Failed to set ACL (is acl package installed?)" >&2
+              gum style --foreground 8 "Try: sudo dnf install acl" >&2
               return 1
             }
             current_dir=$(dirname "$current_dir")
@@ -3124,13 +3124,13 @@ create_new_vm() {
           # Add read permission on the ISO file
           sudo setfacl -m u:qemu:r "$iso_path"
           
-          gum style --foreground 2 "✓ Permissions fixed (qemu user can now access the file)"
+          gum style --foreground 2 "✓ Permissions fixed (qemu user can now access the file)" >&2
           echo "$iso_path"
           return 0
           ;;
           
         "Create symlink in $DISK_DIR")
-          gum style --foreground 6 "Creating symlink..."
+          gum style --foreground 6 "Creating symlink..." >&2
           
           if [[ ! -d "$DISK_DIR" ]]; then
             sudo mkdir -p "$DISK_DIR"
@@ -3147,18 +3147,18 @@ create_new_vm() {
               current_dir=$(dirname "$current_dir")
             done
             
-            gum style --foreground 2 "✓ Symlink created: $link_path → $iso_path"
+            gum style --foreground 2 "✓ Symlink created: $link_path → $iso_path" >&2
             echo "$link_path"
             return 0
           else
-            gum style --foreground 1 "✗ Failed to create symlink"
+            gum style --foreground 1 "✗ Failed to create symlink" >&2
             return 1
           fi
           ;;
           
         "Copy ISO to $DISK_DIR (slow, uses space)")
-          gum style --foreground 6 "Copying $iso_name to $DISK_DIR..."
-          gum style --foreground 8 "(This may take a while for large ISOs)"
+          gum style --foreground 6 "Copying $iso_name to $DISK_DIR..." >&2
+          gum style --foreground 8 "(This may take a while for large ISOs)" >&2
           
           if [[ ! -d "$DISK_DIR" ]]; then
             sudo mkdir -p "$DISK_DIR"
@@ -3175,26 +3175,26 @@ create_new_vm() {
           if [[ $? -eq 0 ]]; then
             sudo chmod 644 "$new_path"
             sudo chown qemu:qemu "$new_path" 2>/dev/null || true
-            gum style --foreground 2 "✓ ISO copied successfully"
+            gum style --foreground 2 "✓ ISO copied successfully" >&2
             echo "$new_path"
             return 0
           else
-            gum style --foreground 1 "✗ Failed to copy ISO"
+            gum style --foreground 1 "✗ Failed to copy ISO" >&2
             return 1
           fi
           ;;
           
         "Use original path anyway (may fail)")
-          gum style --foreground 8 "Proceeding with original path..."
-          gum style --foreground 8 "If it fails, you can fix permissions manually:"
-          gum style --foreground 8 "  sudo setfacl -m u:qemu:rx $(dirname "$iso_path")"
-          gum style --foreground 8 "  sudo setfacl -m u:qemu:r $iso_path"
+          gum style --foreground 8 "Proceeding with original path..." >&2
+          gum style --foreground 8 "If it fails, you can fix permissions manually:" >&2
+          gum style --foreground 8 "  sudo setfacl -m u:qemu:rx $(dirname "$iso_path")" >&2
+          gum style --foreground 8 "  sudo setfacl -m u:qemu:r $iso_path" >&2
           echo "$iso_path"
           return 0
           ;;
           
         "Cancel VM creation")
-          gum style --foreground 1 "VM creation cancelled"
+          gum style --foreground 1 "VM creation cancelled" >&2
           return 2
           ;;
       esac
