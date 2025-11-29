@@ -539,9 +539,11 @@ Still in terminal, context preserved
 - **🔧 Enhanced UEFI Boot Configuration**
   - Automatic OVMF firmware detection in common locations
   - Installation instructions if OVMF is missing
-  - Proper boot order syntax for UEFI (`--boot uefi,cdrom,hd,menu=on`)
-  - Boot menu enabled for manual boot device selection
-  - Reliable ISO booting with UEFI firmware
+  - Proper boot order syntax for UEFI (separate `--boot uefi` and `--boot cdrom,hd,menu=on`)
+  - **Automatic boot order configuration** after VM creation using `virt-xml`
+  - Sets CDROM as first boot device automatically (no manual selection needed)
+  - Boot menu enabled for manual boot device selection if needed
+  - Reliable ISO booting with UEFI firmware - VMs auto-boot from ISO
 
 ---
 
@@ -725,7 +727,7 @@ All with **clear progress indicators** [1/4], [2/4], etc.
   - **Flexible ISO selection** (TUI browse, manual path, or skip)
   - **Permission management** for ISOs in home directories
   - **3D acceleration** option for SPICE graphics with smart EGL detection
-  - **Boot order configuration** with boot menu enabled
+  - **Boot order configuration** - Automatic for UEFI (CDROM first), boot menu enabled
   - **Optional debug mode** to view virt-install command
   - Post-creation connection summary
 
@@ -784,7 +786,7 @@ All with **clear progress indicators** [1/4], [2/4], etc.
 - **Graphics options**: VNC, SPICE, or headless
 - **3D acceleration support** (virtio-gl for SPICE) with automatic EGL detection
 - **Network modes**: NAT, bridge, or isolated
-- **Boot order configuration** with menu enabled
+- **Boot order configuration** - Automatic for UEFI (auto-boots from ISO), menu enabled
 - Summary review with optional command preview
 
 **Show VM Info** - Detailed specifications:
@@ -1250,7 +1252,7 @@ sudo setfacl -m u:qemu:r ~/Downloads/file.iso
 - **Check EGL support:** `ls /dev/dri/renderD*` should show render nodes
 
 ### UEFI VM doesn't boot from ISO
-**Solution:** v1.1 includes automatic OVMF detection and proper boot configuration:
+**Solution:** v1.1 includes automatic OVMF detection, boot configuration, and post-creation boot order setup:
 - Script checks for OVMF firmware before creating UEFI VMs
 - If OVMF is missing, install it:
   ```bash
@@ -1263,7 +1265,16 @@ sudo setfacl -m u:qemu:r ~/Downloads/file.iso
   # Arch
   sudo pacman -S edk2-ovmf
   ```
-- Boot menu is enabled - press ESC during boot to manually select CDROM
+- **Automatic boot order configuration** - Script uses `virt-xml` to set CDROM as first boot device after VM creation
+- If `virt-xml` is not installed, install it:
+  ```bash
+  # Fedora/Nobara
+  sudo dnf install libguestfs-tools
+  
+  # Debian/Ubuntu
+  sudo apt install libguestfs-tools
+  ```
+- Boot menu is enabled - if automatic configuration fails, press ESC during boot to manually select "UEFI QEMU DVD-ROM"
 - Verify boot order: `virsh dumpxml vm-name | grep -A 5 boot`
 - If still not working, try BIOS mode instead
 
@@ -1307,6 +1318,8 @@ mkdir -p ~/iso
 - 🎮 **Smart 3D acceleration detection** - Checks EGL/OpenGL support before enabling
 - ⚠️ **EGL error handling** - Graceful failure with helpful guidance
 - 🛠️ **UEFI boot order fixes** - Reliable ISO booting with proper boot configuration
+- ⚙️ **Automatic boot order configuration** - Post-creation boot order setup using virt-xml
+- 🎯 **Auto-boot from ISO** - UEFI VMs now boot from CDROM automatically (no manual selection)
 - 🧹 **Failed VM cleanup** - Offers to clean up VMs that fail during creation
 
 ### v1.0 (2025-11-29) - Universal & Intelligent
@@ -1349,6 +1362,7 @@ mkdir -p ~/iso
 - ✅ EGL error handling with graceful recovery (v1.1)
 - ✅ OVMF firmware detection and validation (v1.1)
 - ✅ UEFI boot order improvements (v1.1) - Reliable ISO booting
+- ✅ Automatic UEFI boot order configuration (v1.1) - Auto-boots from ISO, no manual selection
 - ✅ Failed VM cleanup assistance (v1.1)
 - ✅ UEFI/BIOS firmware selection (v1.1)
 - ✅ Windows 11 support with UEFI firmware (v1.1)
