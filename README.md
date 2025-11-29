@@ -1,4 +1,4 @@
-# Host & VM Management Notes
+# Virt SPINNER, a Gnome-Boxes TUI Alternative!
 
 <img width="813" height="614" alt="image" src="https://github.com/user-attachments/assets/fb784199-11a5-45a3-a34c-2e1667c4739d" />
 
