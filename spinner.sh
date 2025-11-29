@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Version and Author Info
-VERSION="1.4"
+VERSION="1.5"
 AUTHOR_NAME="Lefteris Iliadis"
 AUTHOR_EMAIL="me@lefteros.com"
 
@@ -40,6 +40,9 @@ SNAPSHOT_LIMIT=5                     # Max snapshots per VM (0=unlimited)
 SECURE_BOOT_ENABLED=false            # Secure Boot (disabled by default to avoid MOK prompts)
 TPM_ENABLED=false                    # TPM emulation (disabled by default)
 
+# Network Model (default: e1000 for universal compatibility)
+NETWORK_MODEL="e1000"                # Network adapter model (e1000=Intel PRO/1000, virtio=requires drivers)
+
 # Required packages for VIRT SPINNER
 REQUIRED_PACKAGES=("fzf" "dialog" "libvirt-clients" "qemu-utils" "virt-manager" "rsync" "net-tools" "pv")
 
@@ -72,6 +75,7 @@ ISO_DIR="$ISO_DIR"
 DISK_DIR="$DISK_DIR"
 SECURE_BOOT_ENABLED=$SECURE_BOOT_ENABLED
 TPM_ENABLED=$TPM_ENABLED
+NETWORK_MODEL="$NETWORK_MODEL"
 EOF
 }
 
@@ -118,6 +122,7 @@ load_and_migrate_settings() {
     local old_disk_dir="${DISK_DIR:-}"
     local old_secure_boot="${SECURE_BOOT_ENABLED:-}"
     local old_tpm="${TPM_ENABLED:-}"
+    local old_network_model="${NETWORK_MODEL:-}"
     
     # Restore old values if they exist and are valid (preserve user settings)
     [[ -n "$old_monitor_refresh" ]] && MONITOR_REFRESH="$old_monitor_refresh"
@@ -130,14 +135,19 @@ load_and_migrate_settings() {
     [[ -n "$old_disk_dir" ]] && DISK_DIR="$old_disk_dir"
     [[ -n "$old_secure_boot" ]] && SECURE_BOOT_ENABLED="$old_secure_boot"
     [[ -n "$old_tpm" ]] && TPM_ENABLED="$old_tpm"
+    [[ -n "$old_network_model" ]] && NETWORK_MODEL="$old_network_model"
     
     # Add new settings if they don't exist (for new features added in this version)
     # SECURE_BOOT_ENABLED and TPM_ENABLED were added in v1.4
+    # NETWORK_MODEL was added in v1.4
     if [[ -z "$old_secure_boot" ]]; then
       SECURE_BOOT_ENABLED=false  # Use default
     fi
     if [[ -z "$old_tpm" ]]; then
       TPM_ENABLED=false  # Use default
+    fi
+    if [[ -z "$old_network_model" ]]; then
+      NETWORK_MODEL="e1000"  # Use default (Intel PRO/1000 for universal compatibility)
     fi
     
     # Save migrated settings with new version
@@ -1146,6 +1156,9 @@ settings_menu() {
     echo "  Secure Boot: $secure_boot_status"
     echo "  TPM emulation: $tpm_status"
     echo
+    gum style --bold --foreground 51 "Network:"
+    echo "  Network model: $NETWORK_MODEL"
+    echo
     
     local choice
     choice=$(gum choose --header="Select setting to change:" \
@@ -1162,6 +1175,8 @@ settings_menu() {
       "───────── VM Security ─────────" \
       "Secure Boot ($secure_boot_status)" \
       "TPM Emulation ($tpm_status)" \
+      "───────── Network ─────────" \
+      "Network Model ($NETWORK_MODEL)" \
       "← Back to Main Menu" \
       || echo "← Back to Main Menu")
     
@@ -1393,6 +1408,54 @@ settings_menu() {
         fi
         save_settings
         sleep 1
+        ;;
+      "───────── Network ─────────")
+        # Separator, do nothing
+        continue
+        ;;
+      "Network Model"*)
+        echo
+        gum style --foreground 8 "Current network model: $NETWORK_MODEL"
+        echo
+        gum style --foreground 8 "Network adapter models:"
+        echo "  e1000     - Intel PRO/1000 (universal support, works out of box)"
+        echo "  virtio    - VirtIO (requires drivers, better performance)"
+        echo "  rtl8139   - Realtek 8139 (legacy, good compatibility)"
+        echo "  ne2k_pci  - NE2000 PCI (very old systems)"
+        echo
+        gum style --foreground 8 "💡 Recommended: e1000 for maximum compatibility"
+        echo
+        local new_model
+        new_model=$(gum choose --header="Select network model:" \
+          "e1000 (Intel PRO/1000 - recommended)" \
+          "virtio (VirtIO - requires drivers)" \
+          "rtl8139 (Realtek 8139)" \
+          "ne2k_pci (NE2000 PCI)" \
+          || echo "$NETWORK_MODEL")
+        
+        case "$new_model" in
+          "e1000"*)
+            NETWORK_MODEL="e1000"
+            ;;
+          "virtio"*)
+            NETWORK_MODEL="virtio"
+            ;;
+          "rtl8139"*)
+            NETWORK_MODEL="rtl8139"
+            ;;
+          "ne2k_pci"*)
+            NETWORK_MODEL="ne2k_pci"
+            ;;
+          *)
+            # Keep current
+            ;;
+        esac
+        
+        if [[ -n "$NETWORK_MODEL" ]]; then
+          save_settings
+          gum style --foreground 2 "✓ Network model set to: $NETWORK_MODEL"
+          sleep 1
+        fi
         ;;
       "← Back to Main Menu")
         return
@@ -4151,8 +4214,8 @@ create_new_vm() {
   case "$network" in
     "default"*)
       network_mode="nat"
-      network_summary="Host NAT (network=default)"
-      network_opt="--network network=default"
+      network_summary="Host NAT (network=default, model=$NETWORK_MODEL)"
+      network_opt="--network network=default,model=$NETWORK_MODEL"
       ;;
     "bridge"*)
       set +e
@@ -4166,8 +4229,8 @@ create_new_vm() {
       fi
       
       network_mode="bridge"
-      network_summary="Bridge: $bridge_name"
-      network_opt="--network bridge=$bridge_name"
+      network_summary="Bridge: $bridge_name (model=$NETWORK_MODEL)"
+      network_opt="--network bridge=$bridge_name,model=$NETWORK_MODEL"
       ;;
     "none")
       network_mode="none"
